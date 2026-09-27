@@ -146,3 +146,8 @@ def test_backup_goes_to_data_dir_not_project(tmp_path, monkeypatch):
     write_config(proj / "hooks.json", "python3 -S /x/flinch-hooklib/cursor_hook.py")
     assert not list(proj.glob("*backup*"))
     assert list((tmp_path / "data" / "backups").glob("hooks-*.json"))
+
+
+def test_failure_context_forwarded_to_cursor():
+    reply = {"hookSpecificOutput": {"hookEventName": "PostToolUseFailure", "additionalContext": "fixed by x"}}
+    assert ch.to_cursor("postToolUseFailure", reply) == {"additional_context": "fixed by x"}

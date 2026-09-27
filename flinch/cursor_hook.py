@@ -85,7 +85,7 @@ def to_cursor(event: str, reply: dict | None) -> dict | None:
         if decision == "ask" and event == "preToolUse":  # Cursor doesn't enforce ask here
             decision, reason = "deny", f"{reason} (Flinch needs the user to confirm; ask them before retrying.)"
         return {"permission": decision, "user_message": reason, "agent_message": reason}
-    if event == "sessionStart" and out.get("additionalContext"):
+    if event in ("sessionStart", "postToolUse", "postToolUseFailure") and out.get("additionalContext"):
         return {"additional_context": out["additionalContext"]}
     return None
 

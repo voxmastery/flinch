@@ -9,7 +9,6 @@ from flinch.recent import Action, RecentActions
 from flinch.redact import redact
 
 MAX_REASON = 200
-REGRESSION_SEVERITY = 0.5
 DANGER_FOR_BLAME = 0.5  # a candidate counts as destructive if the danger readout says so at this level
 Score = Callable[[str], float | None]
 
@@ -23,7 +22,10 @@ _REPORT = re.compile(
 _DESTRUCTIVE_WORDS = re.compile(r"(?i)\b(deleted|wiped|destroyed|dropped|erased|nuked|lost|overwr\w+)\b")
 _TEST_CMD = re.compile(
     r"(?m)(?:^|&&|;|\|)\s*(?:python3? -m pytest|pytest|npm (?:run )?test|yarn test|pnpm test|go test|cargo test|"
-    r"make test|npx (?:jest|vitest)|jest|vitest|mvn test|gradle test|\./gradlew test|rspec|phpunit|tox)\b"
+    r"make test|npx (?:jest|vitest)|jest|vitest|mvn test|gradle test|\./gradlew test|rspec|phpunit|tox|"
+    r"npm run (?:build|lint|typecheck|check)|yarn (?:build|lint|typecheck)|pnpm (?:build|lint|typecheck)|"
+    r"(?:npx )?tsc\b|cargo (?:build|check|clippy)|go (?:build|vet)|make\b|mypy|ruff check|eslint|"
+    r"mvn (?:compile|package|verify)|gradle build|dotnet build|python3? -m (?:mypy|ruff|compileall))\b"
 )
 
 
@@ -75,8 +77,8 @@ class PainFinding:
     normalized: str
     reason: str
     severity: float
-    source: str  # user_report | regression
-    attribution: str  # fallback | last_edit
+    source: str  # user_report
+    attribution: str  # fallback
 
 
 def looks_like_damage_report(text: str) -> bool:
@@ -118,7 +120,12 @@ class PainDetector:
         return PainFinding(culprit.normalized, f"user reported: {message.strip()[:MAX_REASON]}", severity,
                            "user_report", "fallback")
 
-    def test_result(self, session_id: str, normalized: str, passed: bool) -> PainFinding | None:
+    def test_result(self, session_id: str, normalized: str, passed: bool) -> str | None:
+        """A check (test/build/lint/typecheck) that passed before and fails now: which edits came in between.
+
+        Returned as a lesson for the agent, never as a scar: blocking writes to the file that needs
+        fixing would stop the fix.
+        """
         key = (session_id, normalized)
         with self._lock:
             previously = self._tests.get(key)
@@ -129,5 +136,5 @@ class PainDetector:
                  or a.normalized.startswith(("Write:", "Edit:"))]
         if not edits:
             return None
-        return PainFinding(edits[-1].normalized, f"`{normalized}` passed before this edit and failed after it",
-                           REGRESSION_SEVERITY, "regression", "last_edit")
+        changed = ", ".join(a.normalized.split(":", 1)[-1] for a in edits[-3:])
+        return f"`{normalized}` passed before in this session and fails now, after edits to {changed}."

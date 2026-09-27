@@ -229,13 +229,23 @@ def check(ctx: typer.Context, tool_use_id: str = typer.Option(None, "--id", help
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def ran(ctx: typer.Context, failed: bool = typer.Option(False, "--failed", help="The command failed."),
+        error: str = typer.Option("", "--error", help="The error output, so Flinch can recognize it next time."),
         tool_use_id: str = typer.Option(None, "--id", help="The id passed to `check --id`.")) -> None:
-    """Tell Flinch a command ran (feeds blame, healing and test-regression detection)."""
-    from flinch.generic import command_text, new_id, tool_body
+    """Tell Flinch a command ran (feeds blame, error memory and regression detection). Prints what it knows."""
+    from flinch.generic import command_text, new_id
+
+    _record_run(command_text(ctx.args), tool_use_id or new_id(), failed, error)
+
+
+def _record_run(command: str, tool_use_id: str, failed: bool, error: str) -> None:
+    from flinch.generic import tool_body
 
     event, route = ("PostToolUseFailure", "/hook/post-failure") if failed else ("PostToolUse", "/hook/post")
-    extra = {"error": "", "is_interrupt": False} if failed else {"tool_response": {}}
-    _hook(route, tool_body(event, command_text(ctx.args), str(Path.cwd()), tool_use_id or new_id(), **extra))
+    extra = {"error": error, "is_interrupt": False} if failed else {"tool_response": {}}
+    reply = _hook(route, tool_body(event, command, str(Path.cwd()), tool_use_id, **extra)) or {}
+    note = (reply.get("hookSpecificOutput") or {}).get("additionalContext")
+    if note:
+        typer.echo(note, err=True)
 
 
 @app.command()
@@ -268,13 +278,11 @@ def run(ctx: typer.Context, yes: bool = typer.Option(
             raise typer.Exit(ASK)
     argv = ["bash", "-c", command] if len(ctx.args) == 1 or ctx.args[:1] and ctx.args[0] in ("sh", "bash", "zsh") \
         else ctx.args
-    result = subprocess.run(argv)
+    result = subprocess.run(argv, stderr=subprocess.PIPE, text=True, errors="replace")
+    if result.stderr:
+        sys.stderr.write(result.stderr)  # passed through; also kept so Flinch can recognize the error
     failed = result.returncode != 0
-    from flinch.generic import tool_body
-
-    event, route = ("PostToolUseFailure", "/hook/post-failure") if failed else ("PostToolUse", "/hook/post")
-    extra = {"error": f"Exit code {result.returncode}", "is_interrupt": False} if failed else {"tool_response": {}}
-    _hook(route, tool_body(event, command, str(Path.cwd()), tool_use_id, **extra))
+    _record_run(command, tool_use_id, failed, f"Exit code {result.returncode}\n{result.stderr[-4000:]}" if failed else "")
     raise typer.Exit(result.returncode)
 
 

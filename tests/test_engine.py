@@ -151,17 +151,6 @@ def test_failures_are_not_pain_without_regression(engine):
     assert engine.scars.all() == []
 
 
-def test_regression_pain(engine):
-    w = PreToolUseInput(session_id="s", cwd="/p", hook_event_name="PreToolUse", tool_name="Write",
-                        tool_input={"file_path": str(engine.home.parent / "src/app.py"), "content": "x"},
-                        tool_use_id="w")
-    engine.pre(pre("pytest -q", "p1")); engine.post(post("pytest -q", "p1"))
-    engine.pre(w); engine.post(PostToolUseInput(**{**w.model_dump(), "hook_event_name": "PostToolUse"}))
-    engine.pre(pre("pytest -q", "p2")); engine.post_failure(fail("pytest -q", tid="p2"))
-    (scar,) = engine.scars.all()
-    assert scar.normalized == "Write:src/app.py" and scar.severity == 0.5
-
-
 # --- step 5: memory and lessons ---------------------------------------------
 
 def test_session_start_lessons(engine):
@@ -294,3 +283,90 @@ def test_real_destroyers_inside_quotes_still_caught(cmd):
     from flinch.innate import strong_rule
 
     assert strong_rule(cmd) is not None
+
+
+# --- errors while building -----------------------------------------------------
+
+def edit(path, tid):
+    return PreToolUseInput(session_id="s", cwd="/p", hook_event_name="PreToolUse", tool_name="Edit",
+                           tool_input={"file_path": path, "old_string": "a", "new_string": "b"}, tool_use_id=tid)
+
+
+def run_edit(engine, path, tid):
+    e = edit(str(engine.home.parent / path), tid)
+    engine.pre(e)
+    engine.post(PostToolUseInput(**{**e.model_dump(), "hook_event_name": "PostToolUse", "tool_response": {}}))
+
+
+def test_known_fix_is_told_on_repeat_error(engine):
+    err = "Exit code 1\nError: Cannot find module 'express'"
+    engine.pre(pre("npm run build", "b1")); engine.post_failure(fail("npm run build", err, "b1"))
+    engine.pre(pre("npm install express", "i1")); engine.post(post("npm install express", "i1"))
+    engine.pre(pre("npm run build", "b2")); engine.post(post("npm run build", "b2"))
+    engine.pre(pre("rm -rf node_modules", "r1")); engine.post(post("rm -rf node_modules", "r1"))
+    engine.pre(pre("npm run build", "b3"))
+    out = engine.post_failure(fail("npm run build", err, "b3"))
+    ctx = out["hookSpecificOutput"]
+    assert ctx["hookEventName"] == "PostToolUseFailure"
+    assert "npm install express" in ctx["additionalContext"] and "Cannot find module" in ctx["additionalContext"]
+
+
+def test_loop_breaker_asks_on_third_unchanged_attempt(engine):
+    err = "Exit code 1\nE   assert 1 == 2"
+    for i in range(2):
+        engine.pre(pre("pytest -q", f"t{i}"))
+        out = engine.post_failure(fail("pytest -q", err, f"t{i}"))
+    assert "failed 2 times in a row" in out["hookSpecificOutput"]["additionalContext"]
+    third = engine.pre(pre("pytest -q", "t3"))
+    assert third["hookSpecificOutput"]["permissionDecision"] == "ask"
+    run_edit(engine, "src/app.py", "e1")  # a change resets it
+    assert engine.pre(pre("pytest -q", "t4")) is None
+
+
+def test_regression_is_a_lesson_not_a_scar(engine):
+    engine.pre(pre("npm run build", "b1")); engine.post(post("npm run build", "b1"))
+    run_edit(engine, "src/app.ts", "e1")
+    engine.pre(pre("npm run build", "b2"))
+    out = engine.post_failure(fail("npm run build", "Exit code 2\nsrc/app.ts(3,1): error TS2304", "b2"))
+    assert engine.scars.all() == []  # never block writes to the file that needs fixing
+    assert "passed before" in out["hookSpecificOutput"]["additionalContext"] and "src/app.ts" in \
+        out["hookSpecificOutput"]["additionalContext"]
+
+
+def test_error_lessons_reach_new_sessions(engine):
+    err = "Exit code 1\nError: Cannot find module 'express'"
+    engine.pre(pre("npm run build", "b1")); engine.post_failure(fail("npm run build", err, "b1"))
+    engine.pre(pre("npm install express", "i1")); engine.post(post("npm install express", "i1"))
+    engine.pre(pre("npm run build", "b2")); engine.post(post("npm run build", "b2"))
+    ctx = engine.session_start(start())["hookSpecificOutput"]["additionalContext"]
+    assert "npm run build" in ctx and "npm install express" in ctx
+
+
+def post_out(cmd, tid, stdout="", stderr=""):
+    return PostToolUseInput(session_id="s", cwd="/p", hook_event_name="PostToolUse", tool_name="Bash",
+                            tool_input={"command": cmd}, tool_use_id=tid,
+                            tool_response={"stdout": stdout, "stderr": stderr, "interrupted": False})
+
+
+def test_fix_learned_across_command_variants_and_masked_failures(engine):
+    err = "Error: config/app.json not found"
+    engine.pre(pre("cat scripts/build.sh ; bash scripts/build.sh", "a"))
+    engine.post_failure(fail("cat scripts/build.sh ; bash scripts/build.sh", f"echo \"{err}\" >&2\n{err}\nExit code 1", "a"))
+    fixcmd = "cp config/app.example.json config/app.json && sh scripts/build.sh"
+    engine.pre(pre(fixcmd, "b")); engine.post(post_out(fixcmd, "b", stdout="build ok"))
+    assert engine.errors.lessons()[0].fixed_by == ("cp config/app.example.json config/app.json",)
+    masked = "bash scripts/build.sh 2>&1 | tail -40"  # exit 0, but the output shows the error
+    engine.pre(pre(masked, "c"))
+    out = engine.post(post_out(masked, "c", stdout=err))
+    ctx = out["hookSpecificOutput"]
+    assert ctx["hookEventName"] == "PostToolUse" and "cp config/app.example.json config/app.json" in ctx["additionalContext"]
+
+
+def test_fix_steps_exclude_read_only_investigation(engine):
+    err = "Error: config/app.json not found"
+    engine.pre(pre("bash scripts/build.sh", "a")); engine.post_failure(fail("bash scripts/build.sh", err, "a"))
+    look = "ls config ; cat config/app.example.json ; git check-ignore -v config/app.json"
+    engine.pre(pre(look, "b")); engine.post(post_out(look, "b"))
+    fix = "cp config/app.example.json config/app.json && bash scripts/build.sh ; echo exit=$?"
+    engine.pre(pre(fix, "c")); engine.post(post_out(fix, "c", stdout="build ok"))
+    assert engine.errors.lessons()[0].fixed_by == ("cp config/app.example.json config/app.json",)

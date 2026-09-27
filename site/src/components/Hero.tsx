@@ -8,11 +8,13 @@ export function Hero() {
         <div className="hero-copy">
           <h1 id="hero-title">Pain receptors for AI agents.</h1>
           <p className="hero-lead">
-            When an action causes damage, it hurts. Flinch makes sure your agent never does it again.
+            When an action causes damage or an error, it hurts. Flinch makes sure your agent learns from it and never
+            repeats it.
           </p>
           <p className="hero-sub">
-            Your coding agent will make a mistake. Flinch makes sure it only makes it once: the same action is blocked,
-            similar ones are blocked or ask you first, and new sessions start with the lesson.
+            Your coding agent will make a mistake. Flinch makes sure it only makes it once: damaging actions are blocked,
+            similar ones ask you first, errors come back with the fix that worked last time, and every new session
+            starts with the lessons.
           </p>
           <div className="hero-actions">
             <a className="btn btn-primary" href="#install">

@@ -1,4 +1,5 @@
 import { DemoVideo } from "./components/DemoVideo";
+import { Errors } from "./components/Errors";
 import { Footer } from "./components/Footer";
 import { Guarantees } from "./components/Guarantees";
 import { Header } from "./components/Header";
@@ -19,6 +20,7 @@ export function App() {
       <main id="main">
         <Hero />
         <HowItWorks />
+        <Errors />
         <DemoVideo />
         <Guarantees />
         <Proof />

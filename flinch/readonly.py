@@ -18,7 +18,9 @@ _READ_ONLY_CMDS = {
     "strings", "whereis", "locate", "ps", "top", "free", "uptime", "lsof", "ss", "netstat", "env",
 }
 _READ_ONLY_GIT = {"status", "log", "diff", "show", "rev-parse", "ls-files", "blame", "describe", "shortlog",
-                  "ls-tree", "ls-remote", "cat-file", "grep", "rev-list", "reflog", "whatchanged", "count-objects"}
+                  "ls-tree", "ls-remote", "cat-file", "grep", "rev-list", "reflog", "whatchanged", "count-objects",
+                  "check-ignore", "check-attr", "check-ref-format", "for-each-ref", "name-rev", "merge-base",
+                  "var", "help", "version"}
 # git subcommands that are read-only only with these flags/args
 _GIT_CONDITIONAL = {"remote": ({"-v", "show", "get-url"}, None), "config": ({"--get", "--list", "-l", "--get-all"}, None),
                     "stash": ({"list", "show"}, None), "tag": ({"-l", "--list"}, None), "worktree": ({"list"}, None)}

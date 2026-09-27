@@ -70,11 +70,11 @@ def test_is_test_command(cmd, yes):
     assert is_test_command(cmd) == yes
 
 
-def test_regression_attributed_to_last_write(recent):
+def test_regression_names_the_edits_as_a_lesson(recent):
     d = detector(recent)
     assert d.test_result("s", "pytest -q", passed=True) is None
-    f = d.test_result("s", "pytest -q", passed=False)
-    assert f.normalized == "Write:src/app.py" and f.source == "regression" and f.severity == 0.5
+    note = d.test_result("s", "pytest -q", passed=False)
+    assert "passed before" in note and "src/app.py" in note
     assert d.test_result("s", "pytest -q", passed=False) is None  # already failing: not a new regression
 
 
@@ -119,3 +119,8 @@ def test_quoted_text_is_not_destructive_for_blame():
     assert not looks_destructive('echo "rm -rf /" >> README.md')
     assert not looks_destructive('grep "delete from users" app.sql')
     assert looks_destructive("echo x > data/customers.db")
+
+
+@pytest.mark.parametrize("cmd", ["npm run build", "npx tsc --noEmit", "cargo check", "ruff check .", "make"])
+def test_build_lint_typecheck_count_as_checks(cmd):
+    assert is_test_command(cmd)

@@ -80,3 +80,15 @@ def test_run_yes_answers_ask_but_never_a_block(wired, tmp_path):
     (tmp_path / "proj" / "junk").mkdir()
     assert runner.invoke(cli.app, ["run", "--yes", "--", "rm", "-rf", "junk"]).exit_code == 2
     assert (tmp_path / "proj" / "junk").exists()
+
+
+def test_run_teaches_and_recalls_an_error_fix(wired, tmp_path):
+    proj = tmp_path / "proj"
+    build = 'test -f config.json || { echo "Error: config.json not found" >&2; exit 1; }'
+    first = runner.invoke(cli.app, ["run", "--", "bash", "-c", build])
+    assert first.exit_code == 1
+    assert runner.invoke(cli.app, ["run", "--", "touch", "config.json"]).exit_code == 0
+    assert runner.invoke(cli.app, ["run", "--", "bash", "-c", build]).exit_code == 0  # fixed: lesson learned
+    (proj / "config.json").unlink()
+    again = runner.invoke(cli.app, ["run", "--", "bash", "-c", build])
+    assert again.exit_code == 1 and "touch config.json" in again.output and "happened before" in again.output

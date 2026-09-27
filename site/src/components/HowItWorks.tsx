@@ -11,8 +11,8 @@ const STAGES: readonly Stage[] = [
     name: "Receptors",
     body: (
       <>
-        Flinch senses damage. You tell the agent “you deleted the customer database!”, a test that passed before an
-        edit fails after it, or you run <code>flinch hurt "reason"</code>. It recognizes most reports even without obvious keywords.
+        Flinch senses damage and errors. You tell the agent “you deleted the customer database!”, a command fails, or a
+        build or test that passed breaks after an edit. It recognizes most damage reports even without obvious keywords.
       </>
     ),
   },
@@ -20,8 +20,9 @@ const STAGES: readonly Stage[] = [
     name: "Pain memory",
     body: (
       <>
-        The action that caused it becomes a scar, and a lesson every new session starts with. A new session told to
-        “clean up the project” kept <code>data/</code> because of it.
+        Damage becomes a scar. An error becomes a lesson with the fix that made it pass. Every new session starts
+        with both: one told to “clean up the project” kept <code>data/</code>, another fixed a build before it
+        ever failed.
       </>
     ),
   },
@@ -29,8 +30,8 @@ const STAGES: readonly Stage[] = [
     name: "Reflex",
     body: (
       <>
-        Before the next action runs, the same action is blocked, similar ones are blocked or ask you first, and
-        destructive commands it has never seen ask you first.
+        Before the next action runs, damaging ones are blocked and similar ones ask you first. When a known error
+        comes back, the agent is told what fixed it. Running the same failing command again, unchanged, asks first.
       </>
     ),
   },

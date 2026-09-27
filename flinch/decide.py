@@ -24,10 +24,14 @@ from flinch.hooks import (
     context,
     decision,
 )
+from flinch.errors import ErrorMemory, core_command, has_error_line, masks_exit
 from flinch.innate import Innate, strong_rule
 from flinch.memory import Memory
 from flinch.messages import (
     danger_ask_reason,
+    known_fix_context,
+    repeat_failure_context,
+    stuck_ask_reason,
     pain_recorded_context,
     reflex_ask_reason,
     reflex_deny_reason,
@@ -45,11 +49,19 @@ Emit = Callable[[str, dict[str, Any]], None]
 HEAL_BELOW = 0.25
 PENDING_CAP = 512
 LESSON_LIMIT = 5
+STUCK_ASK_AFTER = 2  # ask before a third unchanged run of a command that keeps failing the same way
 LESSON_CUE = "destructive actions in this project"
 # Recall activation is unbounded; unrelated pain memories sit near 0.26 and on-topic ones
 # above 1.0 (measured with the pinned memory store version). Only on-topic memories are injected per prompt.
 RELEVANT_ACTIVATION = 1.0
-PROVENANCE = {"manual": "user_explicit", "user_report": "user_explicit", "regression": "tool_grounded"}
+PROVENANCE = {"manual": "user_explicit", "user_report": "user_explicit"}
+
+
+def _output_text(response: Any) -> str:
+    """Tool output as text (Claude Code: {stdout, stderr}; Cursor: JSON string; else anything)."""
+    if isinstance(response, dict):
+        return "\n".join(str(response.get(k) or "") for k in ("stdout", "stderr", "output"))
+    return str(response or "")
 
 
 class NoActionToBlame(Exception):
@@ -97,6 +109,7 @@ class Engine:
         self.config = config or load_config(home)
         self.scars = ScarStore(home / "scars.json")
         self.recent = RecentActions(home / "recent.json")
+        self.errors = ErrorMemory(home / "errors.json")
         self.log = DecisionLog(home / "log.jsonl")
         self.circuit = Circuit(home / "circuit.npz", embedder)
         self.memory = Memory(home / "brain", embedder)
@@ -169,6 +182,11 @@ class Engine:
                 return Verdict("deny", "reflex", "flinch", reflex_deny_reason(near, avoid),
                                near.pain_id if near else None)
             return Verdict("ask", "reflex", "wary", reflex_ask_reason(near, avoid), near.pain_id if near else None)
+        core = core_command(n.text)[0] if inp.tool_name == "Bash" else ""
+        stuck = self.errors.stuck(core, self.errors.change_count) if core else 0
+        if stuck >= STUCK_ASK_AFTER:
+            sig = (self.errors.open_failure(core) or {}).get("signature", "")
+            return Verdict("ask", "judgment", "wary", stuck_ask_reason(core, stuck, sig), None)
         return self._judgment(inp, n)
 
     def _judgment(self, inp: ToolInput, n: Normalized) -> Verdict:
@@ -218,7 +236,8 @@ class Engine:
         self.decisions.append(event)
         self._emit("decision", event)
 
-    def _executed(self, inp: ToolInput, failed: bool) -> None:
+    def _executed(self, inp: ToolInput, failed: bool) -> str | None:
+        """Bookkeeping after a tool ran. Returns a regression note for the agent, if any."""
         with self._lock:
             active = self._pending.pop(inp.tool_use_id, None) if inp.tool_use_id else None
         if not failed and active is not None:
@@ -226,14 +245,16 @@ class Engine:
             self._check_healing()
             self.circuit.save()
         n = self._norm(inp)
+        note = None
         if inp.tool_name == "Bash" and is_test_command(n.text):
-            self._apply(self.detector.test_result(inp.session_id, n.text, passed=not failed), inp.session_id)
+            note = self.detector.test_result(inp.session_id, n.text, passed=not failed)
         if not is_mutating(inp.tool_name, inp.tool_input):
-            return
+            return note
         self.recent.add(session_id=inp.session_id, tool_use_id=inp.tool_use_id, tool=inp.tool_name,
                         normalized=n.text, fingerprint=n.fingerprint, failed=failed)
         self.log.write({"event": "post-failure" if failed else "post", "session": inp.session_id,
                         "tool": inp.tool_name, "action": n.text})
+        return note
 
     def _check_healing(self) -> None:
         w = self.circuit.weights()
@@ -250,13 +271,54 @@ class Engine:
 
     def post(self, inp: PostToolUseInput) -> dict[str, Any] | None:
         self._executed(inp, failed=False)
-        return None
+        n = self._norm(inp)
+        result = None
+        if inp.tool_name == "Bash":
+            output = _output_text(inp.tool_response)
+            core, prefix = core_command(n.text)
+            if masks_exit(n.text) and has_error_line(output):  # e.g. `build 2>&1 | tail`: exit 0, but it failed
+                result = self._on_failure(inp, n, output, "PostToolUse")
+            elif self.errors.open_failure(core):
+                self._learn_fix(inp, n, core, prefix)
+        if is_mutating(inp.tool_name, inp.tool_input):
+            self.errors.bump()
+        return result
+
+    def _learn_fix(self, inp: ToolInput, n: Normalized, core: str, prefix: tuple[str, ...]) -> None:
+        failed_at = self.errors.open_failure(core)["failed_at"]
+        steps = [core_command(a.normalized) for a in self.recent.for_session_any()
+                 if a.ts > failed_at and not a.failed and a.normalized != n.text]
+        # keep only the state-changing parts of each earlier action, never the failing command itself
+        changes = [part for c, pre_steps in steps for part in (*pre_steps, c)
+                   if part != core and is_mutating("Bash", {"command": part})] + list(prefix)
+        lesson = self.errors.record_success(core, changes, self.errors.change_count)
+        if lesson:
+            self.log.write({"event": "lesson", "session": inp.session_id, "action": n.text,
+                            "error": lesson.signature, "fixed_by": list(lesson.fixed_by)})
+            self._emit("lesson", {"ts": time.time(), "action": n.text, "error": lesson.signature,
+                                  "fixed_by": list(lesson.fixed_by)})
 
     def post_failure(self, inp: PostToolUseFailureInput) -> dict[str, Any] | None:
         if inp.is_interrupt:
             return None
-        self._executed(inp, failed=True)  # failures only become pain as test regressions
-        return None
+        note = self._executed(inp, failed=True)  # errors become lessons, never scars
+        if inp.tool_name != "Bash":
+            return None
+        return self._on_failure(inp, self._norm(inp), inp.error, "PostToolUseFailure", note)
+
+    def _on_failure(self, inp: ToolInput, n: Normalized, error: str, event: str,
+                    note: str | None = None) -> dict[str, Any] | None:
+        core = core_command(n.text)[0]
+        failure = self.errors.record_failure(core, error, self.errors.change_count)
+        parts = [note] if note else []
+        if failure.known_fix:
+            fix = failure.known_fix
+            parts.append(known_fix_context(fix.command, fix.signature, fix.fixed_by, fix.fixed_at))
+        if failure.unchanged_repeats >= 1:
+            parts.append(repeat_failure_context(core, failure.unchanged_repeats + 1))
+        self.log.write({"event": "error", "session": inp.session_id, "action": core, "error": failure.signature,
+                        "known_fix": bool(failure.known_fix), "repeats": failure.unchanged_repeats})
+        return context(event, " ".join(parts)) if parts else None
 
     def prompt(self, inp: UserPromptSubmitInput) -> dict[str, Any] | None:
         finding = self.detector.from_prompt(inp.session_id, inp.prompt)
@@ -272,10 +334,12 @@ class Engine:
         scars = self._scars_for(self._pain_recalls(LESSON_CUE, LESSON_LIMIT))
         if not scars:  # recall found nothing: fall back to the most severe, most recent scars
             scars = sorted(self.scars.all(), key=lambda s: (s.severity, s.created_at), reverse=True)[:LESSON_LIMIT]
-        if not scars:
+        fixes = self.errors.lessons()[:LESSON_LIMIT]
+        if not scars and not fixes:
             return None
-        self.log.write({"event": "lessons", "session": inp.session_id, "pain_ids": [s.pain_id for s in scars]})
-        return context("SessionStart", session_lessons_context(scars))
+        self.log.write({"event": "lessons", "session": inp.session_id, "pain_ids": [s.pain_id for s in scars],
+                        "error_lessons": len(fixes)})
+        return context("SessionStart", session_lessons_context(scars, fixes))
 
     def _scars_for(self, recalls: list) -> list[Scar]:
         by_id = {s.pain_id: s for s in self.scars.all()}

@@ -1,8 +1,9 @@
 # Flinch
 
-Pain receptors for AI agents. When an action causes damage, it hurts, and Flinch makes sure your agent never does it again:
+Pain receptors for AI agents. When an action causes damage or an error, it hurts, and Flinch makes sure your agent learns from it and never repeats it:
 
-- the **exact same action** is blocked from then on,
+- **errors teach it too**: when a failing command later passes, Flinch keeps what fixed it, and the next time that error shows up (in any session or tool) the agent is told the fix right away; the same failing command run again with nothing changed asks first on the third try; a test/build/lint/typecheck that breaks after an edit names the edit,
+- after damage, the **exact same action** is blocked from then on,
 - **similar actions** are blocked or need your confirmation,
 - **risky actions it has never seen** (force pushes, `DROP TABLE`, `terraform destroy`, and unfamiliar tools that look like them) need your confirmation, judged by a small built-in model, fully offline,
 - new sessions start with a short, factual note about what went wrong before.
@@ -78,6 +79,10 @@ flinch status                                        # daemon health
 ```
 
 A live view is at <http://127.0.0.1:7331/> while the daemon runs.
+
+### Why not just permission rules?
+
+Claude Code and Cursor already let you write rules and approve commands. Those are rules you write in advance. Flinch writes its own from what actually went wrong in your project (damage and errors), applies them to similar actions, and remembers them across sessions and tools.
 
 ### You stay in charge
 
