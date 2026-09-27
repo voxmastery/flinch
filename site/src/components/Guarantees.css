@@ -1,0 +1,110 @@
+.table-scroll {
+  width: 100%;
+}
+.guarantees {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+.guarantees thead th {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--muted);
+  padding: 0 20px 14px 0;
+  border-bottom: 1px solid var(--line);
+}
+.guarantees tbody th,
+.guarantees td {
+  padding: 22px 20px 22px 0;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.guarantees tbody th {
+  font-family: var(--font-display);
+  font-weight: 650;
+  font-size: 1.1875rem;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+  width: 32%;
+}
+.guarantees td:nth-child(2) {
+  width: 22%;
+  white-space: nowrap;
+}
+.guarantees .detail {
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+.guarantees code {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.outcome {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+}
+.outcome::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+.outcome.tone-pain { color: var(--pain); }
+.outcome.tone-wary { color: var(--wary); }
+.outcome.tone-calm { color: var(--calm); }
+
+.asides {
+  margin-top: 40px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 28px clamp(24px, 5vw, 64px);
+}
+.limits code {
+  color: var(--text);
+  white-space: nowrap;
+}
+.limits {
+  display: grid;
+  gap: 8px;
+  max-width: 46rem;
+  padding-left: 18px;
+  border-left: 3px solid var(--muted);
+}
+.limits p {
+  color: var(--muted);
+}
+
+@media (max-width: 720px) {
+  .guarantees thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+  .guarantees,
+  .guarantees tbody,
+  .guarantees tr,
+  .guarantees th,
+  .guarantees td {
+    display: block;
+    width: auto !important;
+  }
+  .guarantees tr {
+    padding: 20px 0;
+    border-bottom: 1px solid var(--line);
+    display: grid;
+    gap: 8px;
+  }
+  .guarantees tbody th,
+  .guarantees td {
+    padding: 0;
+    border: 0;
+    white-space: normal !important;
+  }
+}

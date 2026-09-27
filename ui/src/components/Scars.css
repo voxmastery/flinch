@@ -1,0 +1,38 @@
+.scar-list { list-style: none; margin: 0; padding: 0 10px 10px; overflow-y: auto; min-height: 0; flex: 1; }
+.scar {
+  padding: 11px 12px;
+  margin-bottom: 8px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  animation: feed-in 500ms ease-out;
+}
+.scar-top { display: flex; align-items: center; gap: 10px; }
+.scar-sev {
+  --sev: 0.5;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: #fff;
+  background: rgba(255, 60, 80, calc(0.15 + var(--sev) * 0.6));
+  box-shadow: 0 0 calc(var(--sev) * 16px) rgba(255, 60, 80, 0.6);
+}
+.scar-date { font-size: 12px; color: var(--muted); flex: 1; }
+.scar-forgive {
+  font: inherit;
+  font-size: 12px;
+  color: var(--teal);
+  background: transparent;
+  border: 1px solid rgba(95, 214, 192, 0.4);
+  border-radius: 999px;
+  padding: 3px 11px;
+  cursor: pointer;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+.scar-forgive:hover:not(:disabled) { background: rgba(95, 214, 192, 0.12); border-color: var(--teal); }
+.scar-forgive:disabled { opacity: 0.5; cursor: wait; }
+.scar-action { margin-top: 7px; font-size: 13px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.scar-reason { margin-top: 4px; font-size: 12.5px; color: var(--muted); line-height: 1.4; }
+.scar-error { margin-top: 6px; font-size: 12px; color: var(--red); }

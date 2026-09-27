@@ -1,0 +1,94 @@
+.pipe-figure {
+  margin: 0;
+}
+.pipe {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.pipe-v {
+  display: none;
+  max-width: 360px;
+}
+@media (max-width: 760px) {
+  .pipe-h { display: none; }
+  .pipe-v { display: block; }
+}
+
+.pipe-rail {
+  stroke: var(--line);
+  stroke-width: 3;
+}
+.pipe-start {
+  fill: var(--raised);
+  stroke: var(--line);
+  stroke-width: 1.5;
+}
+.pipe-node {
+  fill: var(--ground);
+  stroke: var(--text);
+  stroke-width: 2.5;
+}
+.pipe-num {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 26px;
+  fill: var(--text);
+}
+.pipe-num-sm {
+  font-size: 22px;
+}
+.pipe-title {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 28px;
+  letter-spacing: -0.01em;
+  fill: var(--text);
+}
+.pipe-when {
+  font-family: var(--font-body);
+  font-size: 18px;
+  fill: var(--muted);
+}
+.pipe-mono {
+  font-family: var(--font-mono);
+  font-size: 16px;
+  fill: var(--text);
+}
+.pipe-exit {
+  stroke-width: 2.5;
+  stroke-dasharray: 4 5;
+}
+.pipe-tag {
+  fill: var(--ground);
+  stroke-width: 2;
+}
+.pipe-outcome {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 18px;
+  fill: var(--text);
+}
+.tone-pain { stroke: var(--pain); }
+.tone-wary { stroke: var(--wary); }
+.tone-calm { stroke: var(--calm); }
+.pipe-tag.is-split { stroke: var(--wary); }
+
+.pipe-note {
+  margin-top: clamp(28px, 4vw, 44px);
+  max-width: 44rem;
+  color: var(--muted);
+}
+
+.pipe-block {
+  margin-top: clamp(56px, 8vw, 96px);
+}
+.pipe-heading {
+  font-size: clamp(1.4rem, 1.1rem + 1vw, 1.9rem);
+  font-variation-settings: "wdth" 90;
+}
+.pipe-lede {
+  margin: 10px 0 clamp(28px, 4vw, 44px);
+  color: var(--muted);
+}

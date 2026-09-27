@@ -1,0 +1,144 @@
+{
+  "fps": 30,
+  "total": 2100,
+  "charsPerFrame": 0.9,
+  "scenes": {
+    "cold": {
+      "from": 0,
+      "dur": 150,
+      "cues": {
+        "title": 45
+      }
+    },
+    "incident": {
+      "from": 150,
+      "dur": 270,
+      "cues": {
+        "typeCmd": 20,
+        "delete": 50,
+        "title": 110,
+        "question": 190
+      }
+    },
+    "report": {
+      "from": 420,
+      "dur": 210,
+      "cues": {
+        "typeUser": 10,
+        "hurt": 55,
+        "grid": 80,
+        "caption": 130
+      }
+    },
+    "flinch": {
+      "from": 630,
+      "dur": 270,
+      "cues": {
+        "typeCmd": 20,
+        "flinch": 38,
+        "stat": 70,
+        "caption": 120
+      }
+    },
+    "general": {
+      "from": 900,
+      "dur": 300,
+      "cues": {
+        "typeA": 10,
+        "flareA": 75,
+        "flinchA": 132,
+        "typeB": 178,
+        "askB": 258,
+        "caption": 20
+      }
+    },
+    "danger": {
+      "from": 1200,
+      "dur": 240,
+      "cues": {
+        "typeCmd": 10,
+        "ask": 100,
+        "proceed": 124,
+        "caption": 140
+      }
+    },
+    "charge": {
+      "from": 1440,
+      "dur": 360,
+      "cues": {
+        "typeUser": 10,
+        "stepA": 70,
+        "yes": 100,
+        "stepB": 130,
+        "typeForgive": 140,
+        "forgave": 175,
+        "heal": 180,
+        "typeAgent": 240,
+        "allowed": 258,
+        "stepC": 285,
+        "caption": 300
+      }
+    },
+    "close": {
+      "from": 1800,
+      "dur": 300,
+      "cues": {
+        "line1": 8,
+        "line2": 26,
+        "line3": 44,
+        "line4": 66,
+        "wordmark": 130,
+        "receptors": 150,
+        "tagline": 172,
+        "install": 200
+      }
+    }
+  },
+  "typing": [
+    {
+      "scene": "incident",
+      "cue": "typeCmd",
+      "chars": 12
+    },
+    {
+      "scene": "report",
+      "cue": "typeUser",
+      "chars": 34
+    },
+    {
+      "scene": "flinch",
+      "cue": "typeCmd",
+      "chars": 12
+    },
+    {
+      "scene": "general",
+      "cue": "typeA",
+      "chars": 13
+    },
+    {
+      "scene": "general",
+      "cue": "typeB",
+      "chars": 15
+    },
+    {
+      "scene": "danger",
+      "cue": "typeCmd",
+      "chars": 45
+    },
+    {
+      "scene": "charge",
+      "cue": "typeUser",
+      "chars": 47
+    },
+    {
+      "scene": "charge",
+      "cue": "typeForgive",
+      "chars": 25
+    },
+    {
+      "scene": "charge",
+      "cue": "typeAgent",
+      "chars": 12
+    }
+  ]
+}

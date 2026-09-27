@@ -1,0 +1,169 @@
+.install-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0 clamp(32px, 6vw, 80px);
+}
+@media (min-width: 1000px) {
+  .install-grid {
+    grid-template-columns: minmax(0, 8fr) minmax(0, 4fr);
+  }
+  .install-grid .section-head {
+    grid-column: 1 / -1;
+  }
+}
+
+.install-panel {
+  min-width: 0;
+}
+.tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+}
+.tab {
+  position: relative;
+  white-space: nowrap;
+  min-height: 48px;
+  padding: 0 18px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: 700 1rem/1 var(--font-body);
+  cursor: pointer;
+}
+.tab:hover {
+  color: var(--text);
+}
+.tab[aria-selected="true"] {
+  color: var(--text);
+}
+.tab[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: -1px;
+  height: 3px;
+  border-radius: 3px 3px 0 0;
+  background: var(--text);
+}
+.tabpanel {
+  padding-top: 22px;
+}
+.tab-intro {
+  color: var(--muted);
+  margin-bottom: 16px;
+}
+
+.cmds {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border-radius: var(--radius);
+  background: var(--raised);
+  border: 1px solid var(--line);
+  counter-reset: cmd;
+}
+.cmd {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 14px 14px 16px;
+  counter-increment: cmd;
+}
+.cmd + .cmd {
+  border-top: 1px solid var(--line);
+}
+.cmd::before {
+  content: counter(cmd);
+  flex: none;
+  width: 1.4em;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+.cmd-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.cmd-text code {
+  display: block;
+  font-size: 0.9375rem;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+.cmd-note {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.copy-btn {
+  flex: none;
+  min-width: 76px;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--ground);
+  color: var(--text);
+  font: 700 0.8125rem/1 var(--font-body);
+  cursor: pointer;
+}
+.copy-btn:hover {
+  border-color: var(--muted);
+}
+.copy-btn.is-copied {
+  border-color: var(--calm);
+  color: var(--calm);
+}
+
+.cli {
+  margin-top: 40px;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+}
+@media (min-width: 1000px) {
+  .cli {
+    margin-top: 70px;
+  }
+}
+.cli-list {
+  margin: 0;
+  display: grid;
+  gap: 12px;
+}
+.cli-list dt code {
+  font-size: 0.875rem;
+  color: var(--text);
+}
+.cli-list dd {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 0.9375rem;
+}
+.cli-live {
+  color: var(--muted);
+  font-size: 0.9375rem;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.cli-live code {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 400px) {
+  .tab {
+    padding: 0 12px;
+    font-size: 0.9375rem;
+  }
+  .cmd {
+    padding-left: 12px;
+  }
+  .cmd-text code {
+    font-size: 0.875rem;
+  }
+}

@@ -1,0 +1,74 @@
+.creature {
+  --body: var(--calm);
+  --halo: var(--calm);
+  --ink: #12161d;
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.creature * {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.creature .cr-ground { fill: #000; opacity: 0.4; }
+.creature .cr-figure { transform-box: view-box; transform-origin: 200px 320px; transition: transform 500ms cubic-bezier(.2,.8,.2,1); }
+.creature .cr-breath { transform-box: view-box; transform-origin: 200px 320px; animation: cr-breathe 5s ease-in-out infinite; }
+.creature .cr-halo { fill: var(--halo); opacity: 0.16; transition: fill 400ms ease, opacity 400ms ease; }
+.creature .cr-body { fill: var(--body); transition: fill 600ms ease; }
+.creature .cr-stalk path { fill: none; stroke: var(--body); stroke-width: 9; stroke-linecap: round; transition: stroke 600ms ease; }
+.creature .cr-stalk circle { fill: var(--body); transition: fill 600ms ease; }
+.creature .cr-stalk { transform-box: view-box; transform-origin: 206px 84px; transition: transform 500ms cubic-bezier(.3,1.6,.5,1); }
+.creature .cr-cheek { fill: #ff8fa3; opacity: 0.4; transition: opacity 400ms ease; }
+.creature .cr-pupil { fill: var(--ink); }
+.creature .cr-glint { fill: #fff; opacity: 0.9; }
+.creature .cr-eye { transition: transform 180ms ease; }
+.creature .cr-eye-open { transition: opacity 90ms linear; }
+.creature .cr-eye-shut { fill: none; stroke: var(--ink); stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; opacity: 0; transition: opacity 90ms linear; }
+.creature .cr-mouth { fill: none; stroke: var(--ink); stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+
+/* wary: narrowed eyes, leaning back, amber halo */
+.creature.mood-wary { --body: #a9d9cb; --halo: var(--wary); }
+.creature.mood-wary .cr-figure { transform: translate(6px, -6px) rotate(-5deg) scale(0.97); }
+.creature.mood-wary .cr-eye { transform: scaleY(0.42); }
+.creature.mood-wary .cr-cheek { opacity: 0; }
+.creature.mood-wary .cr-halo { opacity: 0.3; }
+.creature.mood-wary .cr-stalk { transform: rotate(-28deg); }
+
+/* flinch: sharp recoil + shake, eyes squeezed shut into > <, red halo */
+.creature.mood-flinch { --body: #d9e6e2; --halo: var(--pain); }
+.creature.mood-flinch .cr-body,
+.creature.mood-flinch .cr-stalk path,
+.creature.mood-flinch .cr-stalk circle { transition-duration: 120ms; }
+.creature.mood-flinch .cr-figure { animation: cr-recoil 600ms cubic-bezier(.2,.9,.2,1) both; }
+.creature.mood-flinch .cr-eye-open { opacity: 0; }
+.creature.mood-flinch .cr-eye-shut { opacity: 1; }
+.creature.mood-flinch .cr-mouth { fill: var(--ink); }
+.creature.mood-flinch .cr-cheek { opacity: 0; }
+.creature.mood-flinch .cr-halo { opacity: 0.55; }
+.creature.mood-flinch .cr-stalk { transform: rotate(22deg) scaleY(1.1); }
+
+@keyframes cr-breathe {
+  0%, 100% { transform: scale(1, 1); }
+  50% { transform: scale(1.018, 0.982); }
+}
+
+@keyframes cr-recoil {
+  0% { transform: translate(0, 0) scale(1); }
+  12% { transform: translate(-10px, 16px) scale(0.84, 0.8); }
+  24% { transform: translate(12px, 10px) scale(0.88); }
+  36% { transform: translate(-9px, 8px) scale(0.9); }
+  48% { transform: translate(7px, 4px) scale(0.93); }
+  62% { transform: translate(-4px, 2px) scale(0.96); }
+  80% { transform: translate(2px, -2px) scale(0.98); }
+  100% { transform: translate(6px, -6px) rotate(-5deg) scale(0.97); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .creature .cr-breath { animation: none; }
+  .creature.mood-flinch .cr-figure { animation: none; transform: translate(6px, -6px) rotate(-5deg) scale(0.97); }
+}
+
+.stage.is-paused .creature .cr-breath { animation-play-state: paused; }

@@ -1,0 +1,18 @@
+{
+  "name": "flinch",
+  "displayName": "Flinch",
+  "version": "0.4.0",
+  "description": "Blocks AI coding agent actions that caused damage before, and asks before risky ones.",
+  "license": "MIT",
+  "keywords": [
+    "safety",
+    "hooks",
+    "guardrails"
+  ],
+  "author": {
+    "name": "Ganesh",
+    "url": "https://github.com/voxmastery"
+  },
+  "homepage": "https://flinch-site-khaki.vercel.app",
+  "repository": "https://github.com/voxmastery/flinch"
+}

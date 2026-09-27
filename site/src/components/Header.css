@@ -1,0 +1,41 @@
+.site-header {
+  padding: 18px 0;
+}
+.header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text);
+  text-decoration: none;
+  font-family: var(--font-display);
+  font-weight: 750;
+  font-size: 1.375rem;
+  letter-spacing: -0.02em;
+}
+.nav-list {
+  display: flex;
+  gap: clamp(12px, 3vw, 28px);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.nav-list a {
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.9375rem;
+  padding: 8px 0;
+}
+.nav-list a:hover {
+  color: var(--text);
+}
+@media (max-width: 420px) {
+  .nav-list li:first-child {
+    display: none;
+  }
+}

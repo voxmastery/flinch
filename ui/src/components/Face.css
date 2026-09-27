@@ -1,0 +1,147 @@
+.face-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  height: 100%;
+  gap: 6px;
+}
+
+.face {
+  --body: #86dcc8;
+  --halo: #5fd6c0;
+  --ink: #12161d;
+  width: auto;
+  height: 100%;
+  max-height: min(42vh, 440px);
+  min-height: 150px;
+  max-width: 100%;
+  overflow: visible;
+}
+
+.face * {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.face .ground { fill: #000; opacity: 0.45; transform-origin: center; animation: ground 5s ease-in-out infinite; }
+.face .figure { transform-box: view-box; transform-origin: 200px 320px; transition: transform 700ms cubic-bezier(.2,.8,.2,1); }
+.face .breath { transform-box: view-box; transform-origin: 200px 320px; animation: breathe 5s ease-in-out infinite; }
+.face .halo { fill: var(--halo); opacity: 0.18; transition: fill 1s ease, opacity 1s ease; }
+.face .body { fill: var(--body); transition: fill 4s ease; }
+.face .sheen { pointer-events: none; }
+.face .sprout path { fill: none; stroke: var(--body); stroke-width: 9; stroke-linecap: round; transition: stroke 4s ease; }
+.face .sprout circle { fill: var(--body); transition: fill 4s ease; }
+.face .sprout { transform-box: view-box; transform-origin: 206px 84px; transition: transform 600ms cubic-bezier(.3,1.6,.5,1); }
+.face .cheek { fill: #ff8fa3; opacity: 0.35; transition: opacity 800ms ease; }
+.face .pupil { fill: var(--ink); }
+.face .glint { fill: #fff; opacity: 0.9; }
+.face .eye { transition: transform 180ms ease; }
+.face .eye-open { transition: opacity 90ms linear; }
+.face .eye-shut { fill: none; stroke: var(--ink); stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; opacity: 0; transition: opacity 90ms linear; }
+.face .mouth { fill: none; stroke: var(--ink); stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; }
+.face .crack path {
+  fill: none; stroke: #5a0f1c; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round;
+  stroke-dasharray: 160; stroke-dashoffset: 160; opacity: 0;
+  transition: opacity 4s ease, stroke-dashoffset 300ms ease-out;
+}
+
+/* blink */
+.face.blink .eye { transform: scaleY(0.08); }
+
+/* wary: narrowed eyes, leaning back */
+.face.mood-wary { --body: #a6cfc6; --halo: #f0b44c; }
+.face.mood-wary .figure { transform: translate(6px, -6px) rotate(-5deg) scale(0.97); }
+.face.mood-wary .eye { transform: scaleY(0.42); }
+.face.mood-wary .cheek { opacity: 0; }
+.face.mood-wary .halo { opacity: 0.22; }
+.face.mood-wary .sprout { transform: rotate(-28deg); }
+
+/* flinch: sharp recoil, eyes squeezed shut */
+.face.mood-flinch { --body: #d9e6e2; --halo: #ff5d6c; }
+.face.mood-flinch .body, .face.mood-flinch .sprout path, .face.mood-flinch .sprout circle { transition-duration: 120ms; }
+.face.mood-flinch .figure { animation: recoil 600ms cubic-bezier(.2,.9,.2,1) both; }
+.face.mood-flinch .eye-open { opacity: 0; }
+.face.mood-flinch .eye-shut { opacity: 1; }
+.face.mood-flinch .mouth { fill: var(--ink); }
+.face.mood-flinch .cheek { opacity: 0; }
+.face.mood-flinch .halo { opacity: 0.45; }
+.face.mood-flinch .sprout { transform: rotate(22deg) scaleY(1.1); }
+
+/* hurt: wince, crack appears, reddish */
+.face.mood-hurt { --body: #f08a86; --halo: #ff4455; }
+.face.mood-hurt .body, .face.mood-hurt .sprout path, .face.mood-hurt .sprout circle { transition-duration: 250ms; }
+.face.mood-hurt .figure { animation: wince 700ms ease-out both; }
+.face.mood-hurt .eye-open { opacity: 0; }
+.face.mood-hurt .eye-shut { opacity: 1; }
+.face.mood-hurt .crack path { opacity: 1; stroke-dashoffset: 0; transition: opacity 150ms ease, stroke-dashoffset 350ms ease-out; }
+.face.mood-hurt .halo { opacity: 0.4; }
+.face.mood-hurt .sprout { transform: rotate(-60deg); }
+
+/* mending: color and crack slowly return to calm (transitions do the work) */
+.face.mood-mending .crack path { stroke-dashoffset: 0; }
+.face.mood-mending .eye { transform: scaleY(0.7); }
+.face.mood-mending .sprout { transform: rotate(-20deg); }
+
+/* healing: soft glow pulse */
+.face.mood-healing { --halo: #9fffe4; }
+.face.mood-healing .halo { animation: glow 1.8s ease-in-out both; }
+.face.mood-healing .cheek { opacity: 0.6; }
+
+@keyframes breathe {
+  0%, 100% { transform: scale(1, 1); }
+  50% { transform: scale(1.018, 0.982); }
+}
+@keyframes ground {
+  0%, 100% { transform: scaleX(1); }
+  50% { transform: scaleX(1.03); }
+}
+@keyframes recoil {
+  0% { transform: translate(0, 0) scale(1); }
+  12% { transform: translate(-10px, 16px) scale(0.84, 0.8); }
+  24% { transform: translate(12px, 10px) scale(0.88); }
+  36% { transform: translate(-9px, 8px) scale(0.9); }
+  48% { transform: translate(7px, 4px) scale(0.93); }
+  62% { transform: translate(-4px, 2px) scale(0.96); }
+  80% { transform: translate(2px, -2px) scale(0.98); }
+  100% { transform: translate(6px, -6px) rotate(-5deg) scale(0.97); }
+}
+@keyframes wince {
+  0% { transform: none; }
+  15% { transform: translate(-6px, 8px) rotate(4deg) scale(0.9, 0.86); }
+  35% { transform: translate(5px, 4px) rotate(-3deg) scale(0.95); }
+  60% { transform: translate(-2px, 2px) rotate(1deg) scale(0.97); }
+  100% { transform: translate(0, 2px) scale(0.98); }
+}
+@keyframes glow {
+  0% { opacity: 0.18; transform: scale(1); }
+  40% { opacity: 0.6; transform: scale(1.08); }
+  100% { opacity: 0.18; transform: scale(1); }
+}
+
+.face-caption {
+  font-size: 14px;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--muted);
+  transition: color 300ms ease;
+}
+.face-caption.mood-wary { color: var(--amber); }
+.face-caption.mood-flinch, .face-caption.mood-hurt { color: var(--red); }
+.face-caption.mood-healing, .face-caption.mood-mending { color: var(--teal); }
+
+.face-action {
+  max-width: min(90%, 720px);
+  font-size: 15px;
+  color: var(--text);
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .face .breath, .face .ground { animation: none; }
+  .face.mood-flinch .figure, .face.mood-hurt .figure { animation-duration: 1ms; }
+}

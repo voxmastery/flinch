@@ -1,0 +1,68 @@
+{
+  "description": "Flinch: blocks actions that caused damage before",
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -S \"${CLAUDE_PLUGIN_ROOT}/scripts/flinch_hook.py\" session-start",
+            "timeout": 12
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 -S \"${CLAUDE_PLUGIN_ROOT}/scripts/flinch_hook.py\" prompt",
+            "timeout": 6
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "^(Bash|Write|Edit|mcp__.*)$",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:7331/hook/pre",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "python3 -S \"${CLAUDE_PLUGIN_ROOT}/scripts/flinch_hook.py\" scarcheck",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(Bash|Write|Edit|mcp__.*)$",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:7331/hook/post",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "^(Bash|Write|Edit|mcp__.*)$",
+        "hooks": [
+          {
+            "type": "http",
+            "url": "http://127.0.0.1:7331/hook/post-failure",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

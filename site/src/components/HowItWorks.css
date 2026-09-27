@@ -1,0 +1,74 @@
+.stages {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 clamp(24px, 4vw, 48px);
+}
+.stage-step {
+  position: relative;
+  padding-top: 30px;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+/* A rail with a dot per stage shows the order without extra numbering. */
+.stage-step::before {
+  content: "";
+  position: absolute;
+  top: 6px;
+  left: 0;
+  right: calc(-1 * clamp(24px, 4vw, 48px));
+  height: 2px;
+  background: var(--line);
+}
+.stage-step:last-child::before {
+  right: 0;
+}
+.stage-step::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--ground);
+  border: 2px solid var(--text);
+}
+.stage-step h3 {
+  font-size: clamp(1.5rem, 1.2rem + 0.8vw, 1.9rem);
+  font-variation-settings: "wdth" 88;
+}
+.stage-step p {
+  color: var(--muted);
+}
+.stage-step code {
+  color: var(--text);
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .stages {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 28px;
+  }
+  .stage-step {
+    padding: 0 0 0 32px;
+  }
+  .stage-step::before {
+    top: 16px;
+    bottom: -28px;
+    left: 6px;
+    right: auto;
+    width: 2px;
+    height: auto;
+  }
+  .stage-step:last-child::before {
+    display: none;
+  }
+  .stage-step::after {
+    top: 4px;
+  }
+}
