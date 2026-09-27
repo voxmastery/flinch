@@ -1,6 +1,6 @@
 {
   "fps": 30,
-  "total": 2100,
+  "total": 2460,
   "charsPerFrame": 0.9,
   "scenes": {
     "cold": {
@@ -62,8 +62,28 @@
         "caption": 140
       }
     },
-    "charge": {
+    "errors": {
       "from": 1440,
+      "dur": 360,
+      "cues": {
+        "title": 4,
+        "titleOut": 56,
+        "typeBuild": 70,
+        "error": 92,
+        "typeFix": 108,
+        "ok": 186,
+        "stored": 196,
+        "caption1": 150,
+        "chat2": 214,
+        "lesson": 222,
+        "typeFix2": 244,
+        "ok2": 320,
+        "caption2": 250,
+        "rules": 292
+      }
+    },
+    "charge": {
+      "from": 1800,
       "dur": 360,
       "cues": {
         "typeUser": 10,
@@ -80,7 +100,7 @@
       }
     },
     "close": {
-      "from": 1800,
+      "from": 2160,
       "dur": 300,
       "cues": {
         "line1": 8,
@@ -139,6 +159,21 @@
       "scene": "charge",
       "cue": "typeAgent",
       "chars": 12
+    },
+    {
+      "scene": "errors",
+      "cue": "typeBuild",
+      "chars": 16
+    },
+    {
+      "scene": "errors",
+      "cue": "typeFix",
+      "chars": 65
+    },
+    {
+      "scene": "errors",
+      "cue": "typeFix2",
+      "chars": 65
     }
   ]
 }

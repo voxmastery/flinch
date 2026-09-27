@@ -72,10 +72,17 @@ def pad() -> np.ndarray:
     heal = cue_s("charge", "heal")
     minor = [38, 45, 50, 53, 57]           # D minor colour (D2 A2 D3 F3 A3)
     major = [38, 45, 50, 54, 57, 62]       # D major resolve (F# instead of F)
+    ask = cue_s("danger", "ask")
+    e0, e1 = scene_s("errors")
+    c0, _ = scene_s("charge")
+    close0, _ = scene_s("close")
+    word = cue_s("close", "wordmark")
     bright = env_curve([(0, 0.15), (5, 0.25), (14, 0.45), (21, 0.35), (30, 0.5), (40, 0.4),
-                        (47.3, 0.75), (48, 0.3), (heal, 0.4), (62, 0.55), (68, 0.7), (TOTAL_S, 0.4)])
-    level = env_curve([(0, 0.0), (3, 0.5), (5, 0.6), (21, 0.7), (40, 0.75), (47.3, 0.9), (48, 0.55),
-                       (heal, 0.7), (60, 0.8), (64.3, 1.0), (68.5, 0.7), (TOTAL_S, 0.0)])
+                        (ask, 0.75), (e0 + 0.5, 0.35), (e1 - 0.2, 0.45), (c0, 0.3), (heal, 0.4),
+                        (close0 + 2, 0.55), (word, 0.7), (TOTAL_S, 0.4)])
+    level = env_curve([(0, 0.0), (3, 0.5), (5, 0.6), (21, 0.7), (40, 0.75), (ask, 0.9), (e0 + 0.5, 0.6),
+                       (e1, 0.62), (c0 + 0.3, 0.55), (heal, 0.7), (close0, 0.8), (word, 1.0), (word + 4, 0.7),
+                       (TOTAL_S, 0.0)])
     swell = 0.85 + 0.15 * np.sin(2 * np.pi * T / 9.0)
     xfade = smoothstep((T - heal) / 2.5)
     for chord, weight in ((minor, 1 - xfade), (major, xfade)):
@@ -148,6 +155,13 @@ def warm_chord(notes: list[int], dur: float = 5.0) -> np.ndarray:
     return s * env / len(notes)
 
 
+def error_blip() -> np.ndarray:
+    t = np.arange(int(0.35 * SR)) / SR
+    freq = np.where(t < 0.09, 330.0, 247.0)
+    tone = np.sin(2 * np.pi * np.cumsum(freq) / SR)
+    return lowpass(tone, 2200) * np.exp(-t * 7) * np.minimum(1, t / 0.005)
+
+
 def soft_tick() -> np.ndarray:
     t = np.arange(int(0.25 * SR)) / SR
     return np.sin(2 * np.pi * 880 * t) * np.exp(-t * 18)
@@ -181,6 +195,14 @@ def arrange() -> np.ndarray:
     ask = cue_s("danger", "ask")
     rise_from = d0 - 1.5
     place(mix, riser(ask - rise_from), rise_from, gain=0.16)
+
+    place(mix, error_blip(), cue_s("errors", "error"), gain=0.16)
+    place(mix, soft_tick(), cue_s("errors", "ok"), gain=0.05)
+    place(mix, chime(79, 2.5), cue_s("errors", "stored"), pan=0.2, gain=0.09)
+    ok2 = cue_s("errors", "ok2")
+    place(mix, chime(86, 3.0), ok2, pan=-0.15, gain=0.12)
+    place(mix, chime(90, 3.0), ok2 + 0.12, pan=0.15, gain=0.08)
+    place(mix, chime(93, 3.0), ok2 + 0.24, gain=0.06)
 
     heal = cue_s("charge", "heal")
     place(mix, warm_chord([62, 66, 69, 74]), heal, gain=0.22)

@@ -16,9 +16,9 @@ const BigLine: React.FC<{ text: string; at: number; size?: number; color?: strin
   );
 };
 
-const Install: React.FC<{ text: string }> = ({ text }) => (
+const Install: React.FC<{ text: string; prompt?: boolean }> = ({ text, prompt = true }) => (
   <div style={{ fontFamily: FONT.mono, fontSize: 30, background: C.raised, border: `2px solid ${C.line}`, borderRadius: 14, padding: "12px 26px" }}>
-    <span style={{ color: C.muted }}>$ </span>{text}
+    {prompt ? <span style={{ color: C.muted }}>$ </span> : null}{text}
   </div>
 );
 
@@ -45,13 +45,13 @@ export const Close: React.FC = () => {
         <div style={{ position: "absolute", left: 0, right: 0, top: 560, textAlign: "center" }}>
           <BigLine text="Pain receptors for AI agents." at={Q.receptors} size={72} weight={700} />
           <div style={{ marginTop: 16, fontFamily: FONT.body, fontSize: 44, color: C.muted, ...focusIn(frame, Q.tagline) }}>
-            It never makes the same mistake twice.
+            Damage and errors. It never makes the same mistake twice.
           </div>
         </div>
         <div style={{ position: "absolute", left: 0, right: 0, top: 850, display: "flex", justifyContent: "center", gap: 28,
           ...focusIn(frame, Q.install) }}>
-          <Install text="claude plugin install flinch@flinch-local" />
-          <Install text="flinch cursor install" />
+          <Install text="claude plugin install flinch@flinch" />
+          <Install text="github.com/voxmastery/flinch" prompt={false} />
         </div>
       </div>
     </Scene>

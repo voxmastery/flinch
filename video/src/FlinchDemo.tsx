@@ -9,12 +9,13 @@ import { Report } from "./scenes/Report";
 import { NextSession } from "./scenes/NextSession";
 import { Generalize } from "./scenes/Generalize";
 import { Danger } from "./scenes/Danger";
+import { Errors } from "./scenes/Errors";
 import { InCharge } from "./scenes/InCharge";
 import { Close } from "./scenes/Close";
 
 const COMPONENTS: Record<SceneKey, React.FC> = {
   cold: ColdOpen, incident: Incident, report: Report, flinch: NextSession,
-  general: Generalize, danger: Danger, charge: InCharge, close: Close,
+  general: Generalize, danger: Danger, errors: Errors, charge: InCharge, close: Close,
 };
 
 const CUTS = SCENE_ORDER.map((k) => SCENES[k].from).filter((f) => f > 0);

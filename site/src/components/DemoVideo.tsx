@@ -34,8 +34,8 @@ export function DemoVideo() {
           </div>
           <figcaption id="demo-caption" className="demo-caption">
             A coding agent deletes a database once. Flinch feels it, blocks the same and similar commands from then
-            on, asks before never-seen destroyers, and leaves you in charge: approve a prompt or forgive a scar.
-            70 seconds, with sound.
+            on, asks before never-seen destroyers, remembers what fixed a failing build, and leaves you in charge:
+            approve a prompt or forgive a scar. 82 seconds, with sound.
           </figcaption>
         </figure>
       </div>
