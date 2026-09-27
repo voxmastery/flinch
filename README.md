@@ -12,7 +12,7 @@ It plugs into [Claude Code](https://code.claude.com) (terminal, VS Code, JetBrai
 
 ## Install
 
-**Site and 70-second demo:** https://flinch-site-khaki.vercel.app
+**Site and demo video:** https://flinch-site-khaki.vercel.app. **PyPI:** https://pypi.org/project/flinch-agent/
 
 ### Claude Code plugin (terminal, VS Code, JetBrains)
 
@@ -36,7 +36,7 @@ flinch cursor install        # optional, for Cursor
 ### The `flinch` command (for Cursor, any agent, and the CLI)
 
 ```bash
-uv tool install git+https://github.com/voxmastery/flinch     # or: uv tool install flinch-agent (PyPI)
+uv tool install flinch-agent     # or: pipx install flinch-agent, or from GitHub: uv tool install git+https://github.com/voxmastery/flinch
 ```
 
 ### Cursor

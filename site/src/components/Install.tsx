@@ -14,7 +14,7 @@ interface Tab {
   cmds: readonly Cmd[];
 }
 
-const INSTALL_FLINCH: Cmd = { line: "uv tool install git+https://github.com/voxmastery/flinch" };
+const INSTALL_FLINCH: Cmd = { line: "uv tool install flinch-agent", note: "or: pipx install flinch-agent" };
 
 const TABS: readonly Tab[] = [
   {
