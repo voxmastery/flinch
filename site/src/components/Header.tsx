@@ -19,6 +19,11 @@ export function Header() {
             <li>
               <a href="#install">Install</a>
             </li>
+            <li>
+              <a href="https://github.com/voxmastery/flinch" rel="noopener">
+                GitHub
+              </a>
+            </li>
           </ul>
         </nav>
       </div>

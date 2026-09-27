@@ -23,6 +23,16 @@ claude plugin install flinch@flinch
 
 That's it. The first session sets Flinch up in the background (a private virtualenv in the plugin's data folder, about a minute; needs Python 3.11+ and ideally [`uv`](https://docs.astral.sh/uv/)). Nothing is written into your repositories: per-project state lives in `~/.local/share/flinch/projects/`.
 
+### From source
+
+```bash
+git clone https://github.com/voxmastery/flinch && cd flinch
+uv tool install .
+claude plugin marketplace add ./
+claude plugin install flinch@flinch
+flinch cursor install        # optional, for Cursor
+```
+
 ### The `flinch` command (for Cursor, any agent, and the CLI)
 
 ```bash

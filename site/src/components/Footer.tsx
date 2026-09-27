@@ -8,6 +8,9 @@ export function Footer() {
         <p className="footer-meta">
           Flinch: pain receptors for AI agents. Runs locally, offline, with no API keys.
         </p>
+        <p className="footer-links">
+          <a href="https://github.com/voxmastery/flinch" rel="noopener">Source on GitHub</a> (MIT)
+        </p>
         <a className="footer-top" href="#top">
           Back to top
         </a>

@@ -33,6 +33,18 @@ const TABS: readonly Tab[] = [
     cmds: [INSTALL_FLINCH, { line: "flinch cursor install" }],
   },
   {
+    id: "source",
+    name: "From source",
+    intro: "Clone the repo, install the command, and add the plugin from your clone.",
+    cmds: [
+      { line: "git clone https://github.com/voxmastery/flinch && cd flinch" },
+      { line: "uv tool install ." },
+      { line: "claude plugin marketplace add ./" },
+      { line: "claude plugin install flinch@flinch" },
+      { line: "flinch cursor install", note: "optional, for Cursor" },
+    ],
+  },
+  {
     id: "any",
     name: "Any agent",
     intro: "Any agent or script: run commands through Flinch, or check them first. Exit code 2 means blocked, 3 means ask a human.",

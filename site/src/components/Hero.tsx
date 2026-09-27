@@ -23,6 +23,9 @@ export function Hero() {
             <a className="btn btn-ghost" href="#demo">
               Watch the demo
             </a>
+            <a className="btn btn-ghost" href="https://github.com/voxmastery/flinch" rel="noopener">
+              View on GitHub
+            </a>
           </div>
           <p className="hero-meta">
             For Claude Code and Cursor. Runs on your machine, offline, with no API keys.
