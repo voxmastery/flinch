@@ -32,9 +32,37 @@ def _data_dir() -> Path:
     return data_home()
 
 
-def _healthy(timeout: float = 0.3) -> bool:
+def _headers() -> dict[str, str]:
+    from flinch.auth import bearer_headers
+
+    return bearer_headers()
+
+
+def starting_lock() -> Path:
+    return _data_dir() / "daemon.starting"
+
+
+def touch_starting_lock() -> None:
+    """Refresh the start lock so a long model load is not treated as abandoned."""
+    path = starting_lock()
     try:
-        with urllib.request.urlopen(BASE + "/health", timeout=timeout) as r:
+        now = time.time()
+        os.utime(path, (now, now))
+    except OSError:
+        pass
+
+
+def release_starting_lock() -> None:
+    try:
+        starting_lock().unlink()
+    except OSError:
+        pass
+
+
+def _healthy(timeout: float = 0.3) -> bool:
+    req = urllib.request.Request(BASE + "/health", headers=_headers())
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
             return r.status == 200
     except (urllib.error.URLError, OSError, ValueError):
         return False
@@ -58,18 +86,31 @@ def find_flinch() -> list[str] | None:
 
 
 def _spawn(argv: list[str], log: Path) -> None:
-    log.parent.mkdir(parents=True, exist_ok=True)
-    with log.open("ab") as out:
+    from flinch.jsonfile import FILE_MODE, secure_dir
+
+    secure_dir(log.parent)
+    fd = os.open(log, os.O_CREAT | os.O_WRONLY | os.O_APPEND, FILE_MODE)
+    try:
+        os.chmod(log, FILE_MODE)
+        out = os.fdopen(fd, "ab")
+    except BaseException:
+        os.close(fd)
+        raise
+    try:
         subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=out, stderr=out, start_new_session=True,
                          preexec_fn=lambda: os.nice(10))  # background priority: never compete with the IDE
+    finally:
+        out.close()
 
 
 def _claim(lock: Path, stale_s: float = 30.0) -> bool:
     """Atomically take a start/install lock. A lock older than stale_s is considered abandoned."""
-    lock.parent.mkdir(parents=True, exist_ok=True)
+    from flinch.jsonfile import secure_dir
+
+    secure_dir(lock.parent)
     for _ in range(2):
         try:
-            os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY))
+            os.close(os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600))
             return True
         except FileExistsError:
             try:
@@ -119,7 +160,7 @@ def bootstrap() -> str | None:
 
 
 def forward(route: str, body: bytes, timeout: float = 4.0) -> str:
-    req = urllib.request.Request(BASE + route, data=body, headers={"Content-Type": "application/json"})
+    req = urllib.request.Request(BASE + route, data=body, headers=_headers())
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read().decode("utf-8", "replace")
 

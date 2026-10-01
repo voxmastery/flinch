@@ -75,3 +75,74 @@ def normalize(tool_name: str, tool_input: dict[str, Any], root: str) -> str:
 
 def fingerprint(normalized: str) -> str:
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
+
+
+_SUDO_WITH_ARG = {"-u", "-g", "-h", "-p", "-C", "-T", "-r", "-t", "--user", "--group", "--host", "--prompt"}
+_GIT_WITH_ARG = {"-C", "--git-dir", "--work-tree", "--namespace"}
+_RM_LONG = {"--recursive": "-r", "--force": "-f"}
+
+
+def _basename(token: str) -> str:
+    return token.rsplit("/", 1)[-1]
+
+
+def _strip_sudo(tokens: list[str]) -> list[str]:
+    i = 0
+    while i < len(tokens) and _basename(tokens[i]) == "sudo":
+        i += 1
+        while i < len(tokens) and tokens[i].startswith("-"):
+            flag = tokens[i]
+            i += 1
+            if flag in _SUDO_WITH_ARG and i < len(tokens) and not tokens[i].startswith("-"):
+                i += 1
+    return tokens[i:]
+
+
+def _strip_git_globals(tokens: list[str]) -> list[str]:
+    if not tokens or _basename(tokens[0]) != "git":
+        return tokens
+    i = 1
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok in ("-c", "--config"):
+            i += 1
+            if i >= len(tokens):
+                break
+            i += 2 if "=" not in tokens[i] else 1
+            continue
+        if tok in _GIT_WITH_ARG:
+            i += 2
+            continue
+        if tok.startswith("-"):
+            i += 1
+            continue
+        break
+    return ["git", *tokens[i:]]
+
+
+def _expand_rm(tokens: list[str]) -> list[str]:
+    if not tokens or _basename(tokens[0]) != "rm":
+        return tokens
+    out = ["rm"]
+    for tok in tokens[1:]:
+        out.append(_RM_LONG.get(tok, tok))
+    return out
+
+
+def danger_command(command: str) -> str:
+    """Form used by danger rules: basename, no sudo, no `git -c`, rm long options expanded.
+
+    Scar fingerprints keep the original normalized text. This form is only for the rules.
+    """
+    try:
+        tokens = shlex.split(command, posix=True)
+    except ValueError:
+        return command
+    while tokens and _ASSIGNMENT.match(tokens[0]):
+        tokens = tokens[1:]
+    tokens = _strip_sudo(tokens)
+    tokens = _strip_git_globals(tokens)
+    if tokens:
+        tokens[0] = _basename(tokens[0])
+        tokens = _expand_rm(tokens)
+    return " ".join(tokens)

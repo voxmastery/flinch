@@ -30,6 +30,7 @@ def _isolated_data_home(tmp_path_factory, monkeypatch):
 
     monkeypatch.setenv("FLINCH_MODEL_CACHE", os.environ.get("FLINCH_MODEL_CACHE") or str(data_home() / "models"))
     monkeypatch.setenv("FLINCH_DATA_HOME", str(tmp_path_factory.mktemp("flinch-data")))
+    monkeypatch.setenv("FLINCH_TOKEN", "test-token")
 
 
 

@@ -15,7 +15,8 @@ def wired(tmp_path, monkeypatch, fake_embedder):
     monkeypatch.setenv("FLINCH_HOME", str(tmp_path / "proj" / ".flinch"))
     (tmp_path / "proj").mkdir()
     monkeypatch.chdir(tmp_path / "proj")
-    client = TestClient(daemon.create_app(embedder=fake_embedder))
+    client = TestClient(daemon.create_app(embedder=fake_embedder), base_url="http://127.0.0.1",
+                        headers={"Authorization": "Bearer test-token"})
 
     def post(route, body):
         r = client.post(route, json=body)

@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import secrets
 import signal
 import time
 import traceback
@@ -18,6 +19,7 @@ from pydantic import BaseModel, Field
 from starlette.concurrency import run_in_threadpool
 
 from flinch import __version__
+from flinch.auth import ensure_token
 from flinch.circuit import TextEmbedder
 from flinch.decide import Engine, NoActionToBlame
 from flinch.events import EventBus
@@ -28,6 +30,7 @@ from flinch.hooks import (
     SessionStartInput,
     UserPromptSubmitInput,
 )
+from flinch.jsonfile import open_private
 from flinch.locate import data_home
 from flinch.registry import Registry
 from flinch.scars import Scar
@@ -65,11 +68,65 @@ class ForgiveRequest(BaseModel):
     project: str | None = Field(default=None, max_length=4096)
 
 
+_LOOPBACK = {"127.0.0.1", "localhost", "::1"}
+
+
+def _hostname(host_header: str) -> str:
+    host = host_header.strip()
+    if host.startswith("["):
+        end = host.find("]")
+        return host[1:end].lower() if end > 1 else ""
+    if host.count(":") == 1:
+        host = host.split(":", 1)[0]
+    return host.lower()
+
+
+def _bearer_ok(header: str, token: str) -> bool:
+    prefix = "Bearer "
+    if not token or not header.startswith(prefix):
+        return False
+    got = header[len(prefix):].strip()
+    if len(got) != len(token):
+        return False
+    return secrets.compare_digest(got, token)
+
+
+class _Guard:
+    """Loopback, bearer token, and JSON content type. Raw ASGI so SSE stays intact."""
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        headers = {k.decode("latin1").lower(): v.decode("latin1") for k, v in scope.get("headers") or []}
+        if _hostname(headers.get("host", "")) not in _LOOPBACK:
+            await _reject(send, 421, "loopback only")
+            return
+        token = getattr(scope["app"].state, "token", "")
+        if not _bearer_ok(headers.get("authorization", ""), token):
+            await _reject(send, 401, "unauthorized")
+            return
+        path = scope.get("path") or ""
+        if path.startswith("/hook/") and scope.get("method") == "POST":
+            if headers.get("content-type", "").split(";")[0].strip().lower() != "application/json":
+                await _reject(send, 415, "application/json required")
+                return
+        await self.app(scope, receive, send)
+
+
+async def _reject(send, status: int, detail: str) -> None:
+    raw = json.dumps({"detail": detail}).encode()
+    await send({"type": "http.response.start", "status": status, "headers": [
+        (b"content-type", b"application/json"), (b"content-length", str(len(raw)).encode())]})
+    await send({"type": "http.response.body", "body": raw})
+
+
 def _record_error(where: str) -> None:
     try:
-        d = data_home()
-        d.mkdir(parents=True, exist_ok=True)
-        with (d / "errors.log").open("a") as f:
+        with open_private(data_home() / "errors.log", "a") as f:
             f.write(f"{time.strftime('%Y-%m-%dT%H:%M:%S')} {where}\n{traceback.format_exc()}\n")
     except Exception:
         log.exception("could not write error log")
@@ -103,15 +160,35 @@ def create_app(home: Path | None = None, embedder: TextEmbedder | None = None,
             await asyncio.sleep(HOUSEKEEPING_S)
             try:
                 await run_in_threadpool(registry.evict_idle, ENGINE_IDLE_S)
-                await run_in_threadpool(registry.unload_idle_model)
                 if idle_exit_s and time.time() - registry.last_hook_at > idle_exit_s:
                     log.info("flinch: idle for %.0fs, exiting", idle_exit_s)
                     os.kill(os.getpid(), signal.SIGTERM)
             except Exception:
                 _record_error("housekeeping")
 
+    async def _hold_starting_lock(stop: asyncio.Event) -> None:
+        from flinch.relay import touch_starting_lock
+
+        while not stop.is_set():
+            touch_starting_lock()
+            try:
+                await asyncio.wait_for(stop.wait(), 5)
+            except asyncio.TimeoutError:
+                pass
+
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
+        from flinch.relay import release_starting_lock
+
+        # Keep daemon.starting fresh until the model is loaded and /health can answer.
+        stop = asyncio.Event()
+        holder = asyncio.create_task(_hold_starting_lock(stop))
+        try:
+            await run_in_threadpool(registry.preload)
+        finally:
+            stop.set()
+            await holder
+            release_starting_lock()
         task = asyncio.create_task(housekeeping())
         yield
         task.cancel()
@@ -119,8 +196,10 @@ def create_app(home: Path | None = None, embedder: TextEmbedder | None = None,
 
     app = FastAPI(title="flinch", version=__version__, docs_url=None, redoc_url=None, openapi_url=None,
                   lifespan=lifespan)
+    app.state.token = ensure_token()
     app.state.registry = registry
     app.state.bus = bus
+    app.add_middleware(_Guard)
     if fixed:
         app.state.engine = registry.for_cwd(str(fixed.parent))
 

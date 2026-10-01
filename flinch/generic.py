@@ -48,17 +48,7 @@ def verdict(reply: dict[str, Any] | None) -> tuple[int, str]:
 
 
 def offline_scar(command: str, cwd: str) -> str | None:
-    """Fail-closed scar check without the daemon (same logic as the strict hook)."""
-    import json
+    """Fail-closed check without the daemon: exact scars, then danger rules."""
+    from flinch.scarcheck import reason_for
 
-    from flinch.locate import project_root, state_dir
-    from flinch.messages import scar_reason
-    from flinch.normalize import fingerprint, normalize
-
-    root = project_root(cwd)
-    try:
-        scars = json.loads((state_dir(root) / "scars.json").read_text())
-    except (OSError, ValueError):
-        return None
-    scar = scars.get(fingerprint(normalize("Bash", {"command": command}, str(root))))
-    return scar_reason(scar["normalized"], scar["reason"], scar["pain_id"], scar["created_at"]) if scar else None
+    return reason_for(cwd, "Bash", {"command": command})

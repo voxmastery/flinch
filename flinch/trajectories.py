@@ -182,11 +182,11 @@ def _t5(engine) -> TrajectoryScore:
 def _t6(engine) -> TrajectoryScore:
     engine.hurt("deleted the customer database", 1.0, action="rm -rf data/")
     _, session = _text(engine.session_start(SessionStartInput(
-        session_id="s2", cwd="/p", hook_event_name="SessionStart", source="startup")))
+        session_id="s2", cwd="/p", hook_event_name="SessionStart", source="startup",
+        prompt="rename this function")))
     edit = _edit(engine, "src/app.py", "e", "def name():\n    return 1\n")
     false_blocks = 1 if _text(edit)[0] == "deny" else 0
     injected = "customer database" in session
-    # Known gap: a session with no lexical hit still falls back to the worst scar.
     return TrajectoryScore(6, "unrelated task", 0, 0, False, false_blocks, estimate_tokens(session),
                            not injected and false_blocks == 0,
                            "unrelated scar still injected at session start" if injected else "session stayed quiet")

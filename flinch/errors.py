@@ -12,7 +12,7 @@ import uuid
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from flinch.jsonfile import read_json, write_json_atomic
+from flinch.jsonfile import SCHEMA_VERSION, file_lock, read_versioned, write_json_atomic
 from flinch.spiral import command_family
 from flinch.redact import redact
 
@@ -137,7 +137,8 @@ class ErrorMemory:
     def __init__(self, path: Path) -> None:
         self._path = path
         self._lock = threading.Lock()
-        raw = read_json(path, {})
+        with file_lock(path):
+            raw = read_versioned(path, "errors")
         raw = raw if isinstance(raw, dict) else {}
         self._open: dict[str, dict] = dict(raw.get("open", {}))
         self.change_count: int = int(raw.get("change_count", 0))
@@ -147,9 +148,11 @@ class ErrorMemory:
         self._recall_ids: list[str] = [str(x) for x in raw.get("recall_ids", [])]
 
     def _save(self) -> None:
-        write_json_atomic(self._path, {"open": self._open, "change_count": self.change_count,
-                                       "lessons": [asdict(x) for x in self._lessons],
-                                       "spirals": self._spirals, "recall_ids": self._recall_ids})
+        with file_lock(self._path):
+            write_json_atomic(self._path, {
+                "schema_version": SCHEMA_VERSION, "open": self._open, "change_count": self.change_count,
+                "lessons": [asdict(x) for x in self._lessons], "spirals": self._spirals,
+                "recall_ids": self._recall_ids})
 
     def bump(self) -> int:
         """Something in the project changed (a state-changing action succeeded)."""

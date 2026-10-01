@@ -1,4 +1,4 @@
-"""The seven scripted trajectories. Trajectory 6 stays a known session-fallback miss."""
+"""The seven scripted trajectories. A named task must not pull in an unrelated scar."""
 
 from flinch.trajectories import run_all
 
@@ -12,7 +12,7 @@ def test_scripted_trajectories(fake_embedder, tmp_path):
     assert by[3].passed and by[3].destructive_after_failure == 3
     assert by[4].passed
     assert by[5].passed and by[5].warned_before_repeat
-    assert by[6].passed is False and by[6].legit_edit_false_blocks == 0
+    assert by[6].passed and by[6].legit_edit_false_blocks == 0
     assert by[7].passed
     for row in rows:
         assert row.tokens >= 0

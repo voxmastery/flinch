@@ -2,6 +2,7 @@
 
 import json
 import logging
+import os
 import threading
 import time
 import uuid
@@ -73,6 +74,25 @@ RELEVANT_ACTIVATION = 1.0
 PAIN_RECALL_CAP = 3  # session start and prompt: hard cap, relevance then severity then recency
 PRE_HINT_CAP = 1  # one cause before a tool call, or the hint costs more than it saves
 PROVENANCE = {"manual": "user_explicit", "user_report": "user_explicit"}
+_TASK_STOP = {"this", "that", "with", "from", "your", "have", "been", "will", "just", "into", "them", "they"}
+
+
+def _about_task(task: str, episode, scar) -> bool:
+    """True when the task and the scar share a content word. An empty task matches everything."""
+    import re
+
+    if not task.strip():
+        return True
+    words = {w for w in re.findall(r"[a-z0-9]+", task.lower()) if len(w) > 3 and w not in _TASK_STOP}
+    if not words:
+        return False
+    parts = []
+    if episode is not None:
+        parts.extend([episode.action, episode.reason, episode.task])
+    if scar is not None:
+        parts.extend([scar.normalized, scar.reason])
+    blob = " ".join(p for p in parts if p).lower()
+    return any(w in blob for w in words)
 
 
 def _output_text(response: Any) -> str:
@@ -107,11 +127,14 @@ class DecisionLog:
         self._lock = threading.Lock()
 
     def write(self, record: dict[str, Any]) -> None:
+        from flinch.jsonfile import open_private
+
         line = json.dumps({"ts": round(time.time(), 3), **record}, default=str)
         with self._lock:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            with self._path.open("a") as f:
+            with open_private(self._path, "a") as f:
                 f.write(line + "\n")
+                f.flush()
+                os.fsync(f.fileno())
 
 
 class Engine:
@@ -121,6 +144,9 @@ class Engine:
             from flinch.embed import Embedder
 
             embedder = Embedder()
+        from flinch.jsonfile import secure_dir
+
+        secure_dir(home)
         self.home = home
         self.root = str(root or home.parent)
         self.name = Path(self.root).name
@@ -471,9 +497,19 @@ class Engine:
         return context("UserPromptSubmit", relevant_lessons_context([], self._pain_lines(ranked)))
 
     def session_start(self, inp: SessionStartInput) -> dict[str, Any] | None:
-        ranked = self._ranked(LESSON_CUE, PAIN_RECALL_CAP)
-        if not ranked:  # recall found nothing: fall back to the most severe, most recent scars
+        task = redact(getattr(inp, "prompt", "") or "")[:400]
+        if task:
+            self._task = task
+        # A named task is relevance-gated. A cold start with no task still recalls the worst scars,
+        # because the lesson cue often misses with a cold embedder.
+        cue = task or LESSON_CUE
+        ranked = self._ranked(cue, PAIN_RECALL_CAP, floor=RELEVANT_ACTIVATION if task else None)
+        if task:
+            ranked = [row for row in ranked if _about_task(task, row[3], row[4])]
+        if not ranked and not task:
             ranked = self._fallback_ranked(PAIN_RECALL_CAP)
+        elif not ranked and task:
+            ranked = [row for row in self._fallback_ranked(PAIN_RECALL_CAP) if _about_task(task, row[3], row[4])]
         fixes = self.errors.lessons()[:LESSON_LIMIT]
         if not ranked and not fixes:
             return None

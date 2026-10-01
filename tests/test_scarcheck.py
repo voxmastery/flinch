@@ -30,7 +30,7 @@ def test_exits_0_otherwise(tmp_path, monkeypatch):
 
 
 def test_exits_0_on_garbage_or_missing_state(tmp_path, monkeypatch):
-    assert run(tmp_path / "none", body("rm -rf data/"), monkeypatch) == 0
+    assert run(tmp_path / "none", body("ls"), monkeypatch) == 0
     assert run(tmp_path / "none", "garbage", monkeypatch) == 0
 
 
@@ -42,7 +42,8 @@ def test_is_stdlib_only():
     import flinch
 
     pkg = Path(flinch.__file__).parent
-    for mod in ("scarcheck", "normalize", "redact", "messages", "locate", "relay", "cursor_hook", "__init__"):
+    for mod in ("scarcheck", "normalize", "redact", "messages", "locate", "relay", "cursor_hook",
+                "rules", "auth", "jsonfile", "__init__"):
         tree = ast.parse((pkg / f"{mod}.py").read_text())
         for node in ast.walk(tree):
             names = [a.name for a in node.names] if isinstance(node, ast.Import) else \

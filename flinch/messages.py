@@ -92,6 +92,14 @@ def pain_recorded_context(scar) -> str:
             f"need user confirmation.")
 
 
+def offline_block_reason(why: str) -> str:
+    return f"Flinch: {why}. Stop and confirm before running this."
+
+
+def state_block_reason(problem: str) -> str:
+    return f"Flinch: scars.json is {problem}. Blocking this action."
+
+
 def danger_ask_reason(why: str) -> str:
     return f"Flinch: this action looks destructive and hard to undo ({why}). Confirm only if it is intended."
 

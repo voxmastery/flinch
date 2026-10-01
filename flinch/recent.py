@@ -5,7 +5,7 @@ import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from flinch.jsonfile import read_json, write_json_atomic
+from flinch.jsonfile import SCHEMA_VERSION, file_lock, read_versioned, write_json_atomic
 
 PER_SESSION = 20
 TOTAL = 200
@@ -26,14 +26,33 @@ class RecentActions:
     def __init__(self, path: Path) -> None:
         self._path = path
         self._lock = threading.Lock()
-        raw = read_json(path, [])
-        self._items: tuple[Action, ...] = tuple(Action(**r) for r in raw) if isinstance(raw, list) else ()
+        with file_lock(path):
+            self._items = self._read()
+
+    def _read(self) -> tuple[Action, ...]:
+        raw = read_versioned(self._path, "recent")
+        if isinstance(raw, list):
+            rows = raw
+        elif isinstance(raw, dict) and isinstance(raw.get("actions"), list):
+            rows = raw["actions"]
+        else:
+            rows = []
+        items = []
+        for row in rows:
+            if isinstance(row, dict) and "normalized" in row:
+                items.append(Action(**row))
+        return tuple(items)
+
+    def _write(self) -> None:
+        write_json_atomic(self._path, {"schema_version": SCHEMA_VERSION,
+                                       "actions": [asdict(a) for a in self._items]})
 
     def add(self, **fields) -> Action:
         action = Action(ts=time.time(), **fields)
         with self._lock:
-            self._items = (*self._items, action)[-TOTAL:]
-            write_json_atomic(self._path, [asdict(a) for a in self._items])
+            with file_lock(self._path):
+                self._items = (*self._read(), action)[-TOTAL:]
+                self._write()
         return action
 
     def for_session(self, session_id: str) -> list[Action]:
