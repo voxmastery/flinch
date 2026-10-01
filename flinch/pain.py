@@ -40,6 +40,7 @@ _DESTRUCTIVE_ACTION = re.compile(
 
 
 _PLACEHOLDER = re.compile(r"<[A-Z]+>")  # <TS>, <TMP>, ... from normalization: not redirects
+_RESTORE = re.compile(r"(?:^|[\s;&|(])(?:cp|rsync)\s|\bgit\s+(?:checkout|restore|stash)\b", re.I)
 
 
 def looks_destructive(normalized: str) -> bool:
@@ -76,7 +77,13 @@ def pick_culprit(actions: list["Action"], message: str = "", danger: Score | Non
 
     hits = [a for a in actions if destructive(a)]
     named = [a for a in hits if message and _mentions(message, a.normalized)]
-    return (named or hits or actions)[-1]
+    chosen = (named or hits or actions)[-1]
+    # A backup copy after a write is the repair, not the damage.
+    if not named and not hits and _RESTORE.search(chosen.normalized):
+        writes = [a for a in actions if a.normalized.startswith(("Write:", "Edit:", "Delete:"))]
+        if writes:
+            return writes[-1]
+    return chosen
 
 
 @dataclass(frozen=True)

@@ -8,10 +8,12 @@ shows up the agent is told what fixed it last time.
 import re
 import threading
 import time
+import uuid
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from flinch.jsonfile import read_json, write_json_atomic
+from flinch.spiral import command_family
 from flinch.redact import redact
 
 MAX_SIGNATURE = 160
@@ -141,10 +143,13 @@ class ErrorMemory:
         self.change_count: int = int(raw.get("change_count", 0))
         self._lessons: tuple[Lesson, ...] = tuple(
             Lesson(**{**lesson, "fixed_by": tuple(lesson["fixed_by"])}) for lesson in raw.get("lessons", []))
+        self._spirals: list[dict] = [s for s in raw.get("spirals", []) if isinstance(s, dict)]
+        self._recall_ids: list[str] = [str(x) for x in raw.get("recall_ids", [])]
 
     def _save(self) -> None:
         write_json_atomic(self._path, {"open": self._open, "change_count": self.change_count,
-                                       "lessons": [asdict(x) for x in self._lessons]})
+                                       "lessons": [asdict(x) for x in self._lessons],
+                                       "spirals": self._spirals, "recall_ids": self._recall_ids})
 
     def bump(self) -> int:
         """Something in the project changed (a state-changing action succeeded)."""
@@ -193,3 +198,124 @@ class ErrorMemory:
 
     def lessons(self) -> list[Lesson]:
         return sorted(self._lessons, key=lambda x: x.fixed_at, reverse=True)
+
+    def known_fix_step(self, sig: str) -> str | None:
+        for lesson in self.lessons():
+            if lesson.signature == sig and lesson.fixed_by:
+                safe = [step for step in lesson.fixed_by]
+                if safe:
+                    return safe[0]
+        return None
+
+    def record_check_failure(self, family: str, command: str, error: str, task: str) -> dict:
+        """Same signature and family increments. A new signature closes the old spiral.
+
+        `change_count` is ignored: an edit between failures is not progress.
+        """
+        sig = signature(error)
+        with self._lock:
+            current = self._open_family(family)
+            if current is not None and current["signature"] != sig:
+                current["open"] = False
+                current = None
+            if current is None:
+                current = {
+                    "id": f"sp_{uuid.uuid4().hex[:8]}", "family": family, "signature": sig,
+                    "failures": 1, "fixes": 1, "commands": [command], "edits": {}, "destructive": 0,
+                    "pain_id": "", "grade": "", "task": task, "opened_at": time.time(), "open": True,
+                }
+                self._spirals = [*self._spirals, current]
+            else:
+                commands = list(current["commands"])
+                if command not in commands:
+                    commands.append(command)
+                current = {**current, "failures": current["failures"] + 1, "fixes": current["fixes"] + 1,
+                           "commands": commands, "task": task or current.get("task") or ""}
+                self._replace(current)
+            self._save()
+            return dict(current)
+
+    def close_family(self, family: str) -> None:
+        with self._lock:
+            changed = False
+            updated = []
+            for row in self._spirals:
+                if row.get("open") and row.get("family") == family:
+                    updated.append({**row, "open": False})
+                    changed = True
+                else:
+                    updated.append(row)
+            open_left = {k: v for k, v in self._open.items() if command_family(k) != family}
+            if open_left != self._open:
+                self._open = open_left
+                changed = True
+            if changed:
+                self._spirals = updated
+                self._save()
+
+    def open_spirals(self) -> list[dict]:
+        return [dict(s) for s in self._spirals if s.get("open")]
+
+    def open_family(self, family: str) -> dict | None:
+        row = self._open_family(family)
+        return dict(row) if row else None
+
+    def active_spiral(self) -> dict | None:
+        opens = self.open_spirals()
+        return opens[-1] if opens else None
+
+    def note_edit(self, path: str, hashes: list[str]) -> dict | None:
+        with self._lock:
+            row = self._active_locked()
+            if row is None:
+                return None
+            edits = dict(row.get("edits") or {})
+            prior = dict(edits.get(path) or {"n": 0, "hashes": []})
+            seen = list(prior.get("hashes") or [])
+            for h in hashes:
+                if h not in seen:
+                    seen.append(h)
+            edits[path] = {"n": int(prior.get("n") or 0) + 1, "hashes": seen[-12:]}
+            row = {**row, "edits": edits, "fixes": int(row.get("fixes") or 0) + 1}
+            self._replace(row)
+            self._save()
+            return dict(row)
+
+    def note_destructive(self) -> dict | None:
+        with self._lock:
+            row = self._active_locked()
+            if row is None:
+                return None
+            row = {**row, "destructive": int(row.get("destructive") or 0) + 1,
+                   "fixes": int(row.get("fixes") or 0) + 1}
+            self._replace(row)
+            self._save()
+            return dict(row)
+
+    def mark_spiral(self, spiral_id: str, pain_id: str, grade: str) -> None:
+        with self._lock:
+            for row in self._spirals:
+                if row.get("id") == spiral_id:
+                    self._replace({**row, "pain_id": pain_id, "grade": grade})
+                    if pain_id and pain_id not in self._recall_ids:
+                        self._recall_ids = [*self._recall_ids, pain_id]
+                    self._save()
+                    return
+
+    def recall_ids(self) -> set[str]:
+        return set(self._recall_ids)
+
+    def _open_family(self, family: str) -> dict | None:
+        for row in reversed(self._spirals):
+            if row.get("open") and row.get("family") == family:
+                return row
+        return None
+
+    def _active_locked(self) -> dict | None:
+        for row in reversed(self._spirals):
+            if row.get("open"):
+                return row
+        return None
+
+    def _replace(self, row: dict) -> None:
+        self._spirals = [row if s.get("id") == row.get("id") else s for s in self._spirals]

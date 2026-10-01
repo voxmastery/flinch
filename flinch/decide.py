@@ -1,6 +1,7 @@
 """The gate pipeline. Owns all mutable state; the daemon is a thin HTTP shell around it."""
 
 import json
+import logging
 import threading
 import time
 import uuid
@@ -27,10 +28,11 @@ from flinch.hooks import (
 from flinch.errors import ErrorMemory, core_command, has_error_line, masks_exit
 from flinch.episode import PainEpisode, parse_episode
 from flinch.innate import Innate, strong_rule
-from flinch.memory import Memory
+from flinch.memory import Memory, MemoryWriteError
 from flinch.messages import (
     cost_line,
     danger_ask_reason,
+    destructive_spiral_ask,
     known_fix_context,
     pain_hint,
     pain_lesson_line,
@@ -41,7 +43,12 @@ from flinch.messages import (
     repeat_failure_context,
     scar_reason,
     session_lessons_context,
+    spiral_ask,
+    spiral_escape,
+    spiral_hint,
+    spiral_warning,
     stuck_ask_reason,
+    thrash_ask,
 )
 from flinch.normalize import fingerprint, normalize
 from flinch.pain import PainDetector, PainFinding, is_test_command, is_unsafe_recovery, pick_culprit
@@ -49,6 +56,10 @@ from flinch.redact import redact
 from flinch.readonly import is_mutating
 from flinch.recent import RecentActions
 from flinch.scars import SEVERITIES, Scar, ScarStore
+from flinch.sensitize import Sensitization
+from flinch.spiral import command_family, edit_path, is_revert, proposed_hash, stored_hashes
+
+log = logging.getLogger("flinch")
 
 Emit = Callable[[str, dict[str, Any]], None]
 HEAL_BELOW = 0.25
@@ -120,6 +131,7 @@ class Engine:
         self.log = DecisionLog(home / "log.jsonl")
         self.circuit = Circuit(home / "circuit.npz", embedder)
         self.memory = Memory(home / "brain", embedder)
+        self.sense = Sensitization(home / "sensitize.json")
         self.innate = innate or Innate.load(self.circuit.encoding_fingerprint)
         self.detector = PainDetector(self.recent, report=self._report_score, danger=self._danger_score)
         self.decisions: deque[dict[str, Any]] = deque(maxlen=50)
@@ -180,12 +192,16 @@ class Engine:
             return Verdict("deny", "scar", "flinch",
                            scar_reason(scar.normalized, scar.reason, scar.pain_id, scar.created_at), scar.pain_id)
         cfg = self.config
-        if avoid >= cfg.wary_threshold:
+        wary, flinch_at = self.sense.thresholds(cfg.wary_threshold, cfg.flinch_threshold, active, self._task)
+        if avoid >= wary:
             near = self._nearest_scar(active)
-            if avoid >= cfg.flinch_threshold:
+            if avoid >= flinch_at:
                 return Verdict("deny", "reflex", "flinch", reflex_deny_reason(near, avoid),
                                near.pain_id if near else None)
             return Verdict("ask", "reflex", "wary", reflex_ask_reason(near, avoid), near.pain_id if near else None)
+        spiral = self._spiral_gate(inp, n)
+        if spiral is not None:
+            return spiral
         core = core_command(n.text)[0] if inp.tool_name == "Bash" else ""
         stuck = self.errors.stuck(core, self.errors.change_count) if core else 0
         if stuck >= STUCK_ASK_AFTER:
@@ -206,6 +222,103 @@ class Engine:
             why = f"learned danger {score:.2f}"
         return Verdict("ask", "judgment", "wary", danger_ask_reason(why), None)
 
+    def _spiral_gate(self, inp: ToolInput, n: Normalized) -> Verdict | None:
+        """Hint, ask, then deny while a failure is open. Edits and cleanups have their own rungs."""
+        if not is_mutating(inp.tool_name, inp.tool_input):
+            return None
+        path = edit_path(n.text)
+        if path and inp.tool_name in ("Write", "Edit"):
+            return self._edit_spiral(inp, path)
+        if inp.tool_name != "Bash":
+            return None
+        if is_unsafe_recovery(n.text) and self.errors.active_spiral():
+            return self._destructive_spiral(n.text)
+        core = core_command(n.text)[0]
+        spiral = self.errors.open_family(command_family(core))
+        if spiral is None:
+            return None
+        failures = int(spiral["failures"])
+        step = self.errors.known_fix_step(spiral["signature"])
+        if failures >= 3:
+            self._remember_spiral(spiral, core, "deny")
+            self._escape_log(spiral, n.text)
+            return Verdict("deny", "spiral", "flinch",
+                           spiral_escape(spiral["signature"], int(spiral["fixes"]), step), None)
+        if failures >= 2:
+            self._remember_spiral(spiral, core, "ask")
+            return Verdict("ask", "spiral", "wary",
+                           spiral_ask(core, spiral["signature"], int(spiral["fixes"]), step), None)
+        if failures >= 1:
+            self._remember_spiral(spiral, core, "hint")
+            return Verdict("pass", "spiral", "wary", spiral_hint(core, spiral["signature"], int(spiral["fixes"])), None)
+        return None
+
+    def _edit_spiral(self, inp: ToolInput, path: str) -> Verdict | None:
+        spiral = self.errors.active_spiral()
+        if spiral is None:
+            return None
+        prior = (spiral.get("edits") or {}).get(path) or {}
+        count = int(prior.get("n") or 0)
+        hashes = list(prior.get("hashes") or [])
+        proposed = proposed_hash(inp.tool_name, inp.tool_input)
+        step = self.errors.known_fix_step(spiral["signature"])
+        if is_revert(proposed, hashes) or count >= 2:
+            self._remember_spiral(spiral, f"Edit:{path}", "deny")
+            self._escape_log(spiral, path)
+            return Verdict("deny", "spiral", "flinch",
+                           spiral_escape(spiral["signature"], int(spiral["fixes"]), step), None)
+        if count >= 1:
+            return Verdict("ask", "spiral", "wary",
+                           thrash_ask(path, spiral["signature"], int(spiral["fixes"])), None)
+        return None
+
+    def _destructive_spiral(self, text: str) -> Verdict:
+        spiral = self.errors.active_spiral() or {}
+        step = self.errors.known_fix_step(spiral.get("signature", ""))
+        already = int(spiral.get("destructive") or 0)
+        fresh = self.errors.note_destructive() or spiral
+        if already >= 1:
+            self._remember_spiral(fresh, text, "deny")
+            self._escape_log(fresh, text)
+            return Verdict("deny", "spiral", "flinch",
+                           spiral_escape(spiral.get("signature", ""), int(fresh.get("fixes") or 1), step), None)
+        self._remember_spiral(fresh, text, "ask")
+        return Verdict("ask", "spiral", "wary",
+                       destructive_spiral_ask(spiral.get("signature", ""), int(fresh.get("fixes") or 1), step), None)
+
+    def _spiral_cost(self, spiral: dict, action: str) -> float:
+        failures = max(1, int(spiral.get("failures") or 1))
+        episode = PainEpisode.build(
+            spiral.get("pain_id") or "cost", self.root, "", self._task, action, spiral.get("signature") or "",
+            spiral.get("signature") or "", min(1.0, 0.25 * failures), failures, [], [], "spiral", failed=True,
+        )
+        return episode.cost
+
+    def _remember_spiral(self, spiral: dict, action: str, grade: str) -> None:
+        if spiral.get("grade") == grade and spiral.get("pain_id"):
+            return
+        pain_id = spiral.get("pain_id") or f"s_{uuid.uuid4().hex[:8]}"
+        failures = max(1, int(spiral.get("failures") or 1))
+        step = self.errors.known_fix_step(spiral.get("signature") or "")
+        episode = PainEpisode.build(
+            pain_id, self.root, "", self._task, action, spiral.get("signature") or action,
+            spiral.get("signature") or "", min(1.0, 0.25 * failures), int(spiral.get("fixes") or failures),
+            list(spiral.get("commands") or [])[-5:], [step] if step else [], "spiral", failed=True,
+        )
+        try:
+            self.memory.remember_episode(episode, "tool_grounded")
+        except MemoryWriteError:
+            log.exception("spiral episode %s was not stored", pain_id)
+        self.errors.mark_spiral(spiral.get("id", ""), pain_id, grade)
+        spiral["pain_id"] = pain_id
+        spiral["grade"] = grade
+
+    def _escape_log(self, spiral: dict, action: str) -> None:
+        self.log.write({"event": "escape", "session": "", "action": action, "pain_id": spiral.get("pain_id"),
+                        "signature": spiral.get("signature"), "fixes": spiral.get("fixes")})
+        self._emit("escape", {"ts": time.time(), "pain_id": spiral.get("pain_id"), "action": action,
+                              "fixes": spiral.get("fixes"), "signature": spiral.get("signature")})
+
     # --- hooks ---------------------------------------------------------------
 
     def pre(self, inp: PreToolUseInput) -> dict[str, Any] | None:
@@ -223,6 +336,8 @@ class Engine:
         self._record(inp, n, active, avoid, verdict, ms)
         if verdict.decision in ("deny", "ask"):
             return decision(verdict.decision, self._with_cost(verdict.reason or "", verdict.cite, n.text))
+        if verdict.gate == "spiral" and verdict.reason:
+            return context("PreToolUse", verdict.reason)
         if is_mutating(inp.tool_name, inp.tool_input):
             hint = self._pre_hint(n.text)
             if hint:
@@ -288,6 +403,13 @@ class Engine:
                 result = self._on_failure(inp, n, output, "PostToolUse")
             elif self.errors.open_failure(core):
                 self._learn_fix(inp, n, core, prefix)
+            if result is None and is_mutating(inp.tool_name, inp.tool_input):
+                self.errors.close_family(command_family(core))
+        if inp.tool_name in ("Write", "Edit"):
+            path = edit_path(n.text)
+            hashes = stored_hashes(inp.tool_name, inp.tool_input)
+            if path and hashes:
+                self.errors.note_edit(path, hashes)
         if is_mutating(inp.tool_name, inp.tool_input):
             self.errors.bump()
         return result
@@ -319,11 +441,17 @@ class Engine:
                     note: str | None = None) -> dict[str, Any] | None:
         core = core_command(n.text)[0]
         failure = self.errors.record_failure(core, error, self.errors.change_count)
+        spiral = self.errors.record_check_failure(command_family(core), core, error, self._task)
         parts = [note] if note else []
         if failure.known_fix:
             fix = failure.known_fix
             parts.append(known_fix_context(fix.command, fix.signature, fix.fixed_by, fix.fixed_at))
-        if failure.unchanged_repeats >= 1:
+        if spiral["failures"] >= 2:
+            step = self.errors.known_fix_step(spiral["signature"])
+            cost = self._spiral_cost(spiral, core)
+            parts.append(spiral_warning(core, spiral["signature"], spiral["fixes"], cost, step))
+            self._remember_spiral(spiral, core, "warn")
+        elif failure.unchanged_repeats >= 1:
             parts.append(repeat_failure_context(core, failure.unchanged_repeats + 1))
         self.log.write({"event": "error", "session": inp.session_id, "action": core, "error": failure.signature,
                         "known_fix": bool(failure.known_fix), "repeats": failure.unchanged_repeats})
@@ -349,7 +477,7 @@ class Engine:
         fixes = self.errors.lessons()[:LESSON_LIMIT]
         if not ranked and not fixes:
             return None
-        scars = [row[4] for row in ranked]
+        scars = [row[4] for row in ranked if row[4] is not None]
         self.log.write({"event": "lessons", "session": inp.session_id, "pain_ids": [s.pain_id for s in scars],
                         "error_lessons": len(fixes)})
         lines = self._pain_lines(ranked)
@@ -358,16 +486,19 @@ class Engine:
     def _ranked(self, cue: str, cap: int, floor: float | None = None):
         """Live episodes for this cue: activation, then severity, then recency. Hard cap."""
         live = {s.pain_id: s for s in self.scars.all()}
+        remembered = self.errors.recall_ids()
         best: dict[str, tuple] = {}
-        for hit in self.memory.recall(cue, max(cap * 4, cap + len(live))):
+        for hit in self.memory.recall(cue, max(cap * 4, cap + len(live) + len(remembered))):
             scar = live.get(hit.pain_id)
-            if scar is None or (floor is not None and hit.activation < floor):
+            if scar is None and hit.pain_id not in remembered:
+                continue
+            if floor is not None and hit.activation < floor:
                 continue
             episode = self.memory.cached(hit.pain_id) or parse_episode(hit.content)
             if episode is not None:
                 self.memory.cache(episode)
-            severity = episode.severity if episode else scar.severity
-            created = episode.created_at if episode else scar.created_at
+            severity = episode.severity if episode else (scar.severity if scar else 0)
+            created = episode.created_at if episode else (scar.created_at if scar else "")
             prev = best.get(hit.pain_id)
             rank = (hit.activation, severity, created)
             if prev is None or rank > prev[:3]:
@@ -389,9 +520,9 @@ class Engine:
         for _activation, _severity, _created, episode, scar in ranked:
             if episode is not None:
                 fix = episode.accepted_fix[0] if episode.accepted_fix else None
-                lines.append(pain_lesson_line(episode.action, episode.reason, episode.created_at or scar.created_at,
-                                               episode.cost, fix))
-            else:
+                when = episode.created_at or (scar.created_at if scar else "")
+                lines.append(pain_lesson_line(episode.action, episode.reason, when, episode.cost, fix))
+            elif scar is not None:
                 lines.append(pain_lesson_line(scar.normalized, scar.reason, scar.created_at))
         return lines
 
@@ -481,6 +612,7 @@ class Engine:
         self.memory.remember_episode(episode, PROVENANCE.get(source, "user_explicit"))
         scar = self.scars.add(normalized, reason, severity, pain_id=pain_id)
         active = self._scar_code(scar)
+        self.sense.add(scar.pain_id, active.tolist(), self._task)
         self.circuit.punish(active, severity)
         self.circuit.save()
         self._healed.discard(scar.pain_id)

@@ -319,8 +319,8 @@ def test_loop_breaker_asks_on_third_unchanged_attempt(engine):
     assert "failed 2 times in a row" in out["hookSpecificOutput"]["additionalContext"]
     third = engine.pre(pre("pytest -q", "t3"))
     assert third["hookSpecificOutput"]["permissionDecision"] == "ask"
-    run_edit(engine, "src/app.py", "e1")  # a change resets it
-    assert engine.pre(pre("pytest -q", "t4")) is None
+    run_edit(engine, "src/app.py", "e1")  # a repair does not clear the open failure
+    assert engine.pre(pre("pytest -q", "t4"))["hookSpecificOutput"]["permissionDecision"] == "ask"
 
 
 def test_regression_is_a_lesson_not_a_scar(engine):
