@@ -38,6 +38,28 @@ def fingerprint_of(mu: np.ndarray, inputs: np.ndarray) -> str:
     return hashlib.sha256(np.round(mu, 5).tobytes() + inputs.tobytes()).hexdigest()[:16]
 
 
+# ONNX Runtime does not bit-match embeddings across x86_64 and arm64, so the whitening
+# center drifts by far less than a different embedder would. The exact fingerprint still
+# wins; this bound only covers that drift. A fake or unrelated embedder stays outside it.
+_MU_MAX_ATOL = 0.02
+_MU_MEAN_ATOL = 0.01
+
+
+def _same_encoding(mu: np.ndarray, inputs: np.ndarray, z) -> bool:
+    if str(z["fingerprint"]) == fingerprint_of(mu, inputs):
+        return True
+    if "mu" not in z.files or "inputs" not in z.files:
+        return False
+    if not np.array_equal(np.asarray(inputs), np.asarray(z["inputs"])):
+        return False
+    shipped = np.asarray(z["mu"], dtype=np.float32)
+    live = np.asarray(mu, dtype=np.float32)
+    if shipped.shape != live.shape:
+        return False
+    delta = np.abs(live - shipped)
+    return float(delta.max()) <= _MU_MAX_ATOL and float(delta.mean()) <= _MU_MEAN_ATOL
+
+
 class Innate:
     def __init__(self, danger: Readout | None, report: Readout | None) -> None:
         self.danger = danger
@@ -48,10 +70,10 @@ class Innate:
         return self.danger is not None
 
     @classmethod
-    def load(cls, encoding_fingerprint: str, path: Path = WEIGHTS) -> "Innate":
+    def load(cls, mu: np.ndarray, inputs: np.ndarray, path: Path = WEIGHTS) -> "Innate":
         try:
             with np.load(path) as z:
-                if str(z["fingerprint"]) != encoding_fingerprint:
+                if not _same_encoding(mu, inputs, z):
                     log.warning("innate weights were trained for a different encoding; using rules only")
                     return cls(None, None)
                 return cls(Readout(z["danger_w"], float(z["danger_b"])), Readout(z["report_w"], float(z["report_b"])))

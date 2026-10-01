@@ -158,7 +158,7 @@ class Engine:
         self.circuit = Circuit(home / "circuit.npz", embedder)
         self.memory = Memory(home / "brain", embedder)
         self.sense = Sensitization(home / "sensitize.json")
-        self.innate = innate or Innate.load(self.circuit.encoding_fingerprint)
+        self.innate = innate or Innate.load(self.circuit._mu, self.circuit._inputs)
         self.detector = PainDetector(self.recent, report=self._report_score, danger=self._danger_score)
         self.decisions: deque[dict[str, Any]] = deque(maxlen=50)
         self._emit = emit or (lambda kind, data: None)

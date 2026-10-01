@@ -2,6 +2,7 @@ import pytest
 
 import numpy as np
 
+from flinch.circuit import Circuit
 from flinch.config import load_config
 from flinch.decide import Engine
 from flinch.hooks import (
@@ -219,6 +220,17 @@ def test_status_reflects_trained_weights(engine, tmp_path, fake_embedder):
     e = make_engine(tmp_path / "x" / ".flinch", fake_embedder, Innate(ConstReadout(0.1), ConstReadout(0.1)))
     assert e.judgment_status() == "ok"
     e.close()
+
+
+def test_small_whitening_drift_still_loads_shipped_weights(tmp_path, real_embedder):
+    """arm64 ONNX shifts the reference mean slightly. That is still this encoding."""
+    c = Circuit(tmp_path / "c.npz", real_embedder)
+    near = Innate.load(c._mu + np.float32(0.001), c._inputs)
+    assert near.available
+    far = Innate.load(c._mu + np.float32(0.2), c._inputs)
+    assert not far.available
+    c2 = Circuit(tmp_path / "fresh.npz", real_embedder)
+    assert np.array_equal(c2._inputs, c._inputs)
 
 
 def test_shipped_weights_load_for_real_encoding(tmp_path, real_embedder):

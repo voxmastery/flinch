@@ -3,6 +3,7 @@
 import json
 import os
 import stat
+import sys
 import threading
 import time
 
@@ -238,7 +239,7 @@ def test_private_logs_and_token(tmp_path, fake_embedder, monkeypatch):
     assert _mode(data_home() / "errors.log") == 0o600
 
     log_path = tmp_path / "daemon.log"
-    _spawn(["/bin/true"], log_path)
+    _spawn([sys.executable, "-c", "pass"], log_path)
     assert _mode(log_path) == 0o600 and _mode(log_path.parent) == 0o700
 
 

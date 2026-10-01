@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Shipped danger weights still load when ONNX whitening drifts slightly across CPU architectures. The projection must match, and a different embedder stays on rules only.
 - Session start with a task prompt only injects scars that share the task. A cold start with no task still recalls the worst scars.
 - The daemon requires a per-user bearer token on every route, rejects unexpected `Host` headers, and requires `application/json` on hook routes. It still binds to loopback only.
 - The offline hook runs the danger rules after basename, `sudo`, `git -c`, and `rm` long-option normalization, so those bypasses are blocked with the daemon down.
