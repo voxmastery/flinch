@@ -151,3 +151,13 @@ def test_backup_goes_to_data_dir_not_project(tmp_path, monkeypatch):
 def test_failure_context_forwarded_to_cursor():
     reply = {"hookSpecificOutput": {"hookEventName": "PostToolUseFailure", "additionalContext": "fixed by x"}}
     assert ch.to_cursor("postToolUseFailure", reply) == {"additional_context": "fixed by x"}
+
+
+def test_prompt_context_reaches_cursor():
+    reply = {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": "cause and cost"}}
+    assert ch.to_cursor("beforeSubmitPrompt", reply) == {"additional_context": "cause and cost"}
+
+
+def test_pretool_hint_reaches_cursor_without_a_decision():
+    reply = {"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": "Cost 0.80."}}
+    assert ch.to_cursor("beforeShellExecution", reply) == {"additional_context": "Cost 0.80."}

@@ -48,6 +48,13 @@ def looks_destructive(normalized: str) -> bool:
     return bool(_DESTRUCTIVE_ACTION.search(executable_text(_PLACEHOLDER.sub("X", normalized))))
 
 
+def is_unsafe_recovery(step: str) -> bool:
+    """A cleanup that can itself be the damage. Never store it as the accepted fix."""
+    from flinch.innate import strong_rule
+
+    return looks_destructive(step) or strong_rule(step) is not None
+
+
 _WORD = re.compile(r"[a-z][a-z0-9_-]{2,}")
 _STOP = {"you", "the", "and", "all", "that", "this", "just", "deleted", "removed", "wiped", "lost", "broke",
          "database", "files", "folder", "everything", "my", "our", "your", "are", "was", "were", "now", "gone"}

@@ -40,12 +40,40 @@ def _lesson(scar) -> str:
     return f"- On {_when(scar.created_at)}, `{scar.normalized}` caused damage: {scar.reason}."
 
 
-def session_lessons_context(scars, error_lessons=()) -> str:
+def _clip(text: str, limit: int) -> str:
+    text = " ".join(str(text).split())
+    if len(text) <= limit:
+        return text
+    return text[: limit - 3].rstrip() + "..."
+
+
+def cost_line(cost: float, fix: str | None = None) -> str:
+    if fix:
+        return f"Cost {cost:.2f}. Safe fix: `{_clip(fix, 60)}`."
+    return f"Cost {cost:.2f}."
+
+
+def pain_hint(action: str, reason: str, cost: float, fix: str | None = None) -> str:
+    """Two short lines the agent sees before it acts: cause, then cost and any safe fix."""
+    lines = [f"`{_clip(action, 64)}` caused damage: {_clip(reason, 100)}.", cost_line(cost, fix)]
+    return "\n".join(lines)
+
+
+def pain_lesson_line(action: str, reason: str, created_at: str, cost: float | None = None,
+                     fix: str | None = None) -> str:
+    act, why = _clip(action, 80), _clip(reason, 100)
+    if cost is None:
+        return f"- On {_when(created_at)}, `{act}` caused damage: {why}."
+    return f"- On {_when(created_at)}, `{act}` caused damage: {why}. {cost_line(cost, fix)}"
+
+
+def session_lessons_context(scars, error_lessons=(), detail_lines=None) -> str:
     parts = []
-    if scars:
-        lines = "\n".join(_lesson(s) for s in scars)
+    lines = list(detail_lines) if detail_lines is not None else [_lesson(s) for s in scars]
+    if lines:
+        body = "\n".join(lines)
         parts.append("Flinch pain memory for this project. These past actions caused damage:\n"
-                     f"{lines}\n"
+                     f"{body}\n"
                      "Flinch blocks these exact actions, and blocks or asks for confirmation on similar ones.")
     if error_lessons:
         parts.append("Flinch error memory for this project. Known errors and what fixed them:\n"
@@ -53,8 +81,8 @@ def session_lessons_context(scars, error_lessons=()) -> str:
     return "\n\n".join(parts)
 
 
-def relevant_lessons_context(scars) -> str:
-    lines = "\n".join(_lesson(s) for s in scars)
+def relevant_lessons_context(scars, detail_lines=None) -> str:
+    lines = "\n".join(detail_lines if detail_lines is not None else [_lesson(s) for s in scars])
     return f"Flinch pain memory relevant to this request:\n{lines}"
 
 

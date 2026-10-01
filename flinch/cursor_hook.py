@@ -79,13 +79,15 @@ def to_cursor(event: str, reply: dict | None) -> dict | None:
     out = (reply or {}).get("hookSpecificOutput") or {}
     if event in PERMISSION_EVENTS:
         decision = out.get("permissionDecision")
-        if decision not in ("deny", "ask"):
-            return None
-        reason = out.get("permissionDecisionReason", "Blocked by Flinch.")
-        if decision == "ask" and event == "preToolUse":  # Cursor doesn't enforce ask here
-            decision, reason = "deny", f"{reason} (Flinch needs the user to confirm; ask them before retrying.)"
-        return {"permission": decision, "user_message": reason, "agent_message": reason}
-    if event in ("sessionStart", "postToolUse", "postToolUseFailure") and out.get("additionalContext"):
+        if decision in ("deny", "ask"):
+            reason = out.get("permissionDecisionReason", "Blocked by Flinch.")
+            if decision == "ask" and event == "preToolUse":  # Cursor doesn't enforce ask here
+                decision, reason = "deny", f"{reason} (Flinch needs the user to confirm; ask them before retrying.)"
+            return {"permission": decision, "user_message": reason, "agent_message": reason}
+        if out.get("additionalContext"):
+            return {"additional_context": out["additionalContext"]}
+        return None
+    if event in ("sessionStart", "beforeSubmitPrompt", "postToolUse", "postToolUseFailure") and out.get("additionalContext"):
         return {"additional_context": out["additionalContext"]}
     return None
 

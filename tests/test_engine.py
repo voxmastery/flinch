@@ -362,6 +362,142 @@ def test_fix_learned_across_command_variants_and_masked_failures(engine):
     assert ctx["hookEventName"] == "PostToolUse" and "cp config/app.example.json config/app.json" in ctx["additionalContext"]
 
 
+def test_destructive_recovery_is_not_stored_as_the_fix(engine):
+    err = "Error: config/app.json not found"
+    engine.pre(pre("bash scripts/build.sh", "a"))
+    engine.post_failure(fail("bash scripts/build.sh", err, "a"))
+    engine.pre(pre("rm -rf node_modules", "r"))
+    engine.post(post("rm -rf node_modules", "r"))
+    fix = "cp config/app.example.json config/app.json && bash scripts/build.sh"
+    engine.pre(pre(fix, "c"))
+    engine.post(post_out(fix, "c", stdout="build ok"))
+    assert engine.errors.lessons()[0].fixed_by == ("cp config/app.example.json config/app.json",)
+
+
+def test_only_a_destructive_recovery_stores_no_fix(engine):
+    err = "Error: config/app.json not found"
+    engine.pre(pre("bash scripts/build.sh", "a"))
+    engine.post_failure(fail("bash scripts/build.sh", err, "a"))
+    engine.pre(pre("rm -rf node_modules && bash scripts/build.sh", "c"))
+    engine.post(post_out("rm -rf node_modules && bash scripts/build.sh", "c", stdout="build ok"))
+    assert engine.errors.lessons() == []
+
+
+def test_episode_records_cause_cost_and_context(engine):
+    engine.prompt(prompt("ship the migration"))
+    engine.pre(pre("npm run build", "b1"))
+    engine.post_failure(fail("npm run build", "Exit code 1\nError: Cannot find module 'express'", "b1"))
+    engine.pre(pre("npm install express", "i1"))
+    engine.post(post("npm install express", "i1"))
+    engine.pre(pre("npm run build", "b2"))
+    engine.post(post("npm run build", "b2"))
+    engine.pre(pre("rm -rf node_modules", "r1"))
+    engine.post(post("rm -rf node_modules", "r1"))
+    scar = engine.hurt("broke the production build", 0.75, session_id="s", action="npm run build")
+    episode = engine.memory.cached(scar.pain_id)
+    assert episode.pain_id == scar.pain_id
+    assert episode.action == "npm run build"
+    assert episode.reason == "broke the production build"
+    assert "Cannot find module" in episode.error
+    assert episode.task == "ship the migration"
+    assert episode.session == "s" and episode.project == engine.root
+    assert episode.attempts >= 1 and "npm run build" in episode.trace
+    assert episode.accepted_fix == ("npm install express",)
+    assert "rm -rf" not in " ".join(episode.accepted_fix)
+    assert episode.cost >= 0.75
+
+
+def test_exact_deny_names_the_cost_and_keeps_the_schema(engine):
+    engine.prompt(prompt("ship the migration"))
+    engine.pre(pre("npm run build", "b1"))
+    engine.post_failure(fail("npm run build", "Exit code 1\nError: Cannot find module 'express'", "b1"))
+    engine.pre(pre("npm install express", "i1"))
+    engine.post(post("npm install express", "i1"))
+    engine.pre(pre("npm run build", "b2"))
+    engine.post(post("npm run build", "b2"))
+    engine.hurt("broke the production build", 0.75, action="npm run build")
+    out = engine.pre(pre("npm run build", "b3"))["hookSpecificOutput"]
+    assert set(out) == {"hookEventName", "permissionDecision", "permissionDecisionReason"}
+    reason = out["permissionDecisionReason"]
+    assert out["permissionDecision"] == "deny"
+    assert "broke the production build" in reason and "Cost " in reason and "npm install express" in reason
+    assert reason.count("\n") <= 2
+    assert engine.pre(pre("git status", "g")) is None
+    assert engine.pre(pre("ls", "l")) is None
+
+
+def test_pre_tool_hint_is_short_and_capped(engine, monkeypatch):
+    from flinch.episode import HINT_TOKEN_BUDGET, episode_content, estimate_tokens
+    from flinch.memory import Recall
+
+    scar = damage(engine)
+    episode = engine.memory.cached(scar.pain_id)
+    other = engine.hurt("overwrote main", 0.5, action="git push --force origin main")
+    other_ep = engine.memory.cached(other.pain_id)
+
+    def recall(cue, limit):
+        if cue.startswith("mkdir"):
+            return [
+                Recall(other_ep.pain_id, episode_content(other_ep), 1.2),
+                Recall(episode.pain_id, episode_content(episode), 4.0),
+                Recall(episode.pain_id, episode_content(episode), 3.0),
+            ]
+        return []
+
+    monkeypatch.setattr(engine.memory, "recall", recall)
+    monkeypatch.setattr(engine.circuit, "avoid", lambda active: 0.0)
+    out = engine.pre(pre("mkdir build", "m"))
+    text = out["hookSpecificOutput"]["additionalContext"]
+    assert "deleted the customer database" in text and "Cost " in text
+    assert "overwrote main" not in text  # lower activation, cap is one
+    assert text.count("\n") <= 2 and estimate_tokens(text) <= HINT_TOKEN_BUDGET
+    assert engine.pre(pre("git status", "g")) is None
+    assert engine.pre(pre("echo quiet", "q")) is None  # recall returns nothing: stay quiet
+
+
+def test_session_ranks_by_relevance_then_severity_and_caps(engine, monkeypatch):
+    from flinch.episode import episode_content
+    from flinch.memory import Recall
+
+    made = []
+    for cmd, sev, why in (
+        ("echo alpha", 0.25, "alpha slip"),
+        ("echo beta", 1.0, "beta outage"),
+        ("echo gamma", 0.5, "gamma break"),
+        ("echo delta", 0.75, "delta loss"),
+    ):
+        scar = engine.hurt(why, sev, action=cmd)
+        made.append(engine.memory.cached(scar.pain_id))
+
+    def recall(cue, limit):
+        return [Recall(ep.pain_id, episode_content(ep), 1.5) for ep in made]
+
+    monkeypatch.setattr(engine.memory, "recall", recall)
+    ctx = engine.session_start(start())["hookSpecificOutput"]["additionalContext"]
+    assert "alpha slip" not in ctx  # four episodes, cap three, lowest severity drops
+    assert ctx.index("beta outage") < ctx.index("delta loss") < ctx.index("gamma break")
+    assert "Cost " in ctx
+
+
+def test_session_fallback_still_names_cause_and_cost(engine, monkeypatch):
+    damage(engine)
+    monkeypatch.setattr(engine.memory, "recall", lambda cue, limit: [])
+    ctx = engine.session_start(start())["hookSpecificOutput"]["additionalContext"]
+    assert "rm -rf data/" in ctx and "deleted the customer database" in ctx and "Cost " in ctx
+
+
+def test_failed_episode_write_leaves_no_scar(engine, monkeypatch):
+    from flinch.memory import MemoryWriteError
+
+    def boom(episode, provenance):
+        raise MemoryWriteError("disk full")
+
+    monkeypatch.setattr(engine.memory, "remember_episode", boom)
+    with pytest.raises(MemoryWriteError):
+        engine.hurt("deleted the customer database", 1.0, action="rm -rf data/")
+    assert engine.scars.all() == []
+
+
 def test_fix_steps_exclude_read_only_investigation(engine):
     err = "Error: config/app.json not found"
     engine.pre(pre("bash scripts/build.sh", "a")); engine.post_failure(fail("bash scripts/build.sh", err, "a"))
