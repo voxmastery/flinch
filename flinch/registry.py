@@ -94,7 +94,17 @@ class Registry:
                 self._used.pop(key, None)
                 log.info("flinch: unloaded idle project state %s", key)
 
+    def preload(self) -> None:
+        """Load the shared embedder before the daemon accepts hook traffic."""
+        embedder = self._shared_embedder()
+        preload = getattr(embedder, "preload", None)
+        if callable(preload):
+            preload()
+        else:
+            embedder.embed("flinch")
+
     def unload_idle_model(self) -> None:
+        """Idle unload for callers that opt in. The daemon does not call this."""
         unload = getattr(self._embedder, "unload_if_idle", None)
         if unload:
             unload()

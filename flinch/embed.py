@@ -57,6 +57,10 @@ class Embedder:
     def embed(self, text: str) -> np.ndarray:
         return self.embed_many([text])[0]
 
+    def preload(self) -> None:
+        """Load the model now. The daemon calls this once and keeps it for the process lifetime."""
+        self.embed("flinch")
+
     @property
     def loaded(self) -> bool:
         return self._model is not None

@@ -97,26 +97,44 @@ class Circuit:
                 last = float(z["last_decay_at"])
                 seed = int(z["seed"])
         except Exception:
-            bad = self._path.with_suffix(".corrupt")
-            log.exception("circuit state unreadable; moving to %s and starting fresh", bad)
-            os.replace(self._path, bad)
+            log.exception("circuit state unreadable; archiving it and starting fresh")
+            self._archive(self._path)
             return False
         if inputs.shape != (self.params.cells, self.params.fan_in) or seed != self.params.seed:
-            log.warning("circuit state has different parameters; starting fresh")
+            log.error("circuit state has a different schema; archiving it and starting fresh")
+            self._archive(self._path)
             return False
         self._inputs, self._mu, self._sd, self._w, self._last_decay_at = inputs, mu, sd, w, last
         return True
+
+    def _archive(self, path: Path) -> None:
+        if not path.exists():
+            return
+        dest = path.with_name(f"{path.name}.incompatible-{time.time_ns()}")
+        try:
+            os.replace(path, dest)
+            log.error("archived incompatible circuit as %s", dest.name)
+        except OSError:
+            log.exception("could not archive %s", path)
 
     def save(self) -> None:
         with self._lock:
             arrays = dict(inputs=self._inputs, mu=self._mu, sd=self._sd, w=self._w.copy(),
                           last_decay_at=np.float64(self._last_decay_at), seed=np.int64(self.params.seed))
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=self._path.parent, prefix=".circuit.", suffix=".npz")
         try:
-            with os.fdopen(fd, "wb") as f:
-                np.savez(f, **arrays)
+            os.chmod(self._path.parent, 0o700)
+        except OSError:
+            pass
+        fd, tmp = tempfile.mkstemp(dir=self._path.parent, prefix=".circuit.", suffix=".npz")
+        os.close(fd)
+        try:
+            np.savez(tmp, **arrays)
+            with open(tmp, "r+b") as f:
+                os.fsync(f.fileno())
+            os.chmod(tmp, 0o600)
             os.replace(tmp, self._path)
+            os.chmod(self._path, 0o600)
         except BaseException:
             Path(tmp).unlink(missing_ok=True)
             raise

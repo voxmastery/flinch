@@ -9,8 +9,13 @@ _TOKENS = re.compile(
     r"|gh[ousr]_[A-Za-z0-9]{20,}"
     r"|github_pat_[A-Za-z0-9_]{20,}"
     r"|sk-[A-Za-z0-9_\-]{16,}"
+    r"|sk_(?:live|test)_[A-Za-z0-9]{8,}"
     r"|AKIA[0-9A-Z]{16}"
     r"|xox[abprs]-[A-Za-z0-9\-]{8,}"
+)
+_URL_USERINFO = re.compile(r"(?i)([a-z][a-z0-9+.-]*://)([^/\s:@]+):([^/\s@]+)@")
+_URL_VALUE = re.compile(
+    r"(?i)\b([A-Z0-9_]*(?:_URL|DATABASE_URL|DSN))\b(\s*[=:]\s*)(\"[^\"]*\"|'[^']*'|[^\s'\"]+)"
 )
 _BEARER = re.compile(r"(?i)\b(bearer|token|basic)\s+[A-Za-z0-9._~+/=\-]{8,}")
 _KEY_VALUE = re.compile(
@@ -27,6 +32,8 @@ _PEM = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY-----.*?-----END [A-Z0-9 ]*P
 
 def redact(text: str) -> str:
     text = _PEM.sub(MASK, text)
+    text = _URL_USERINFO.sub(lambda m: f"{m.group(1)}{m.group(2)}:{MASK}@", text)
+    text = _URL_VALUE.sub(lambda m: f"{m.group(1)}{m.group(2)}{MASK}", text)
     text = _TOKENS.sub(MASK, text)
     text = _FLAG_VALUE.sub(lambda m: f"{m.group(1)}{m.group(2)}{MASK}", text)
     text = _BEARER.sub(lambda m: f"{m.group(1)} {MASK}", text)

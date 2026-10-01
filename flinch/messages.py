@@ -92,6 +92,14 @@ def pain_recorded_context(scar) -> str:
             f"need user confirmation.")
 
 
+def offline_block_reason(why: str) -> str:
+    return f"Flinch: {why}. Stop and confirm before running this."
+
+
+def state_block_reason(problem: str) -> str:
+    return f"Flinch: scars.json is {problem}. Blocking this action."
+
+
 def danger_ask_reason(why: str) -> str:
     return f"Flinch: this action looks destructive and hard to undo ({why}). Confirm only if it is intended."
 
@@ -109,6 +117,63 @@ def known_fix_context(command: str, sig: str, fixed_by, when: float) -> str:
 def repeat_failure_context(command: str, times: int) -> str:
     return (f"Flinch: `{command}` has now failed {times} times in a row with the same error, and nothing "
             f"changed in between.")
+
+
+def _fixes(n: int) -> str:
+    return f"{n} failed {'fix' if n == 1 else 'fixes'} so far"
+
+
+def spiral_hint(command: str, sig: str, n: int) -> str:
+    return "\n".join([
+        f"Flinch: `{_clip(command, 60)}` failed. {_fixes(n)}.",
+        f"Same error: \"{_clip(sig, 80)}\".",
+    ])
+
+
+def spiral_warning(command: str, sig: str, n: int, cost: float, fix: str | None = None) -> str:
+    lines = [
+        f"Flinch: warning. {_fixes(n)}. `{_clip(command, 40)}` failed {n} times in a row. Cost {cost:.2f}.",
+        f"Still: \"{_clip(sig, 80)}\".",
+    ]
+    if fix:
+        lines.append(f"Safe fix: `{_clip(fix, 60)}`.")
+    return "\n".join(lines[:3])
+
+
+def spiral_ask(command: str, sig: str, n: int, fix: str | None = None) -> str:
+    lines = [
+        f"Flinch: confirm another try. {_fixes(n)}. `{_clip(command, 40)}` failed {n} times in a row.",
+        f"\"{_clip(sig, 90)}\".",
+    ]
+    lines.append(f"Known fix: `{_clip(fix, 70)}`." if fix else "Stop if this repeats the same approach.")
+    return "\n".join(lines[:3])
+
+
+def spiral_escape(sig: str, n: int, fix: str | None = None) -> str:
+    repair = f"Diagnose: one hypothesis, then `{_clip(fix, 50)}`." if fix else \
+        "Diagnose: one hypothesis, then one change."
+    return "\n".join([
+        f"Flinch: stop. {_fixes(n)}. \"{_clip(sig, 70)}\".",
+        "Checkpoint: `git stash` or a new branch. Do not clean up.",
+        repair,
+    ])
+
+
+def destructive_spiral_ask(sig: str, n: int, fix: str | None = None) -> str:
+    lines = [
+        f"Flinch: this cleanup follows a failure. {_fixes(n)}.",
+        f"Open error: \"{_clip(sig, 80)}\".",
+    ]
+    lines.append(f"Safe fix: `{_clip(fix, 60)}`." if fix else "Do not reset, delete, or force-push to get green.")
+    return "\n".join(lines[:3])
+
+
+def thrash_ask(path: str, sig: str, n: int) -> str:
+    return "\n".join([
+        f"Flinch: `{_clip(path, 50)}` is being edited again. {_fixes(n)}.",
+        f"Open error: \"{_clip(sig, 70)}\".",
+        "One change, then rerun the check.",
+    ])
 
 
 def stuck_ask_reason(command: str, times: int, sig: str) -> str:

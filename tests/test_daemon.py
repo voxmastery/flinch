@@ -13,9 +13,14 @@ def home(tmp_path, monkeypatch):
     return h
 
 
+def make_client(embedder):
+    return TestClient(daemon.create_app(embedder=embedder), base_url="http://127.0.0.1",
+                      headers={"Authorization": "Bearer test-token"})
+
+
 @pytest.fixture
 def client(home, fake_embedder):
-    return TestClient(daemon.create_app(embedder=fake_embedder))
+    return make_client(fake_embedder)
 
 
 def tool_body(cmd="ls", event="PreToolUse", tid="t1", **extra):
@@ -100,11 +105,11 @@ def test_decisions_logged_with_gates_and_redaction(client, home):
 
 
 def test_scars_survive_daemon_restart(home, fake_embedder):
-    c1 = TestClient(daemon.create_app(embedder=fake_embedder))
+    c1 = make_client(fake_embedder)
     run(c1, "rm -rf data/", "t1")
     hurt(c1)
     c1.app.state.engine.close()
-    c2 = TestClient(daemon.create_app(embedder=fake_embedder))
+    c2 = make_client(fake_embedder)
     assert c2.post("/hook/pre", json=tool_body("rm -rf data/")).json()[
         "hookSpecificOutput"]["permissionDecision"] == "deny"
 
@@ -152,7 +157,7 @@ def test_registry_routes_projects_by_cwd(tmp_path, monkeypatch, fake_embedder):
     a, b = tmp_path / "a", tmp_path / "b"
     for p in (a, b):
         (p / ".git").mkdir(parents=True)
-    c = TestClient(daemon.create_app(embedder=fake_embedder))
+    c = make_client(fake_embedder)
 
     def body(cwd, cmd, tid, event="PreToolUse", **extra):
         return {"session_id": "s", "cwd": str(cwd), "hook_event_name": event, "tool_name": "Bash",

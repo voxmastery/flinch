@@ -26,6 +26,13 @@ def test_plain_text_untouched():
     assert redact("rm -rf data/") == "rm -rf data/"
 
 
+def test_url_userinfo_database_url_and_live_keys():
+    assert "s3cret" not in redact("postgres://app:s3cret@db.internal/shop")
+    assert "s3cret" not in redact("DATABASE_URL=postgres://app:s3cret@db.internal/shop")
+    assert "sk_live_abcDEF123456" not in redact("paid with sk_live_abcDEF123456")
+    assert "topsecret" not in redact('REDIS_URL: "redis://:topsecret@localhost:6379"')
+
+
 @pytest.mark.parametrize("cmd,secret", [
     ("mycli --password hunter2ExtraLong login", "hunter2ExtraLong"),
     ("curl --api-key sk_liveXXXXYYYY https://x", "sk_liveXXXXYYYY"),

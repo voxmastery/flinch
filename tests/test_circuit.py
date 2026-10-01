@@ -89,9 +89,12 @@ def test_forgive_zeroes_code(tmp_path, fake_embedder):
 
 def test_corrupt_state_file_rebuilds(tmp_path, fake_embedder):
     p = tmp_path / "c.npz"
-    p.write_bytes(b"garbage")
+    original = b"garbage"
+    p.write_bytes(original)
     c = Circuit(p, fake_embedder)
     assert len(c.encode(PAIN)) == 200
+    archived = list(tmp_path.glob("c.npz.incompatible-*"))
+    assert len(archived) == 1 and archived[0].read_bytes() == original
 
 
 def test_code_cache_returns_same_readonly_code(tmp_path, fake_embedder):

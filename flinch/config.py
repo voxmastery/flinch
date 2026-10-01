@@ -52,8 +52,16 @@ def load_config(home: Path) -> Config:
         log.exception("invalid %s; using defaults", path)
         raw = {}
     t, d = raw.get("thresholds", {}), Config()
-    return Config(
-        flinch_threshold=float(t.get("flinch", d.flinch_threshold)),
-        wary_threshold=float(t.get("wary", d.wary_threshold)),
-        danger_threshold=float(t.get("danger", d.danger_threshold)),
-    )
+    try:
+        cfg = Config(
+            flinch_threshold=float(t.get("flinch", d.flinch_threshold)),
+            wary_threshold=float(t.get("wary", d.wary_threshold)),
+            danger_threshold=float(t.get("danger", d.danger_threshold)),
+        )
+    except (TypeError, ValueError):
+        log.error("invalid thresholds in %s; using defaults", path)
+        return Config()
+    if not (0 < cfg.wary_threshold < cfg.flinch_threshold < cfg.danger_threshold <= 1):
+        log.error("thresholds must satisfy wary < flinch < danger; using defaults (%s)", path)
+        return Config()
+    return cfg

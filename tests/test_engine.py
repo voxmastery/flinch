@@ -2,6 +2,7 @@ import pytest
 
 import numpy as np
 
+from flinch.circuit import Circuit
 from flinch.config import load_config
 from flinch.decide import Engine
 from flinch.hooks import (
@@ -221,6 +222,17 @@ def test_status_reflects_trained_weights(engine, tmp_path, fake_embedder):
     e.close()
 
 
+def test_small_whitening_drift_still_loads_shipped_weights(tmp_path, real_embedder):
+    """arm64 ONNX shifts the reference mean slightly. That is still this encoding."""
+    c = Circuit(tmp_path / "c.npz", real_embedder)
+    near = Innate.load(c._mu + np.float32(0.001), c._inputs)
+    assert near.available
+    far = Innate.load(c._mu + np.float32(0.2), c._inputs)
+    assert not far.available
+    c2 = Circuit(tmp_path / "fresh.npz", real_embedder)
+    assert np.array_equal(c2._inputs, c._inputs)
+
+
 def test_shipped_weights_load_for_real_encoding(tmp_path, real_embedder):
     e = Engine(tmp_path / ".flinch", embedder=real_embedder)
     assert e.innate.available and e.judgment_status() == "ok"
@@ -319,8 +331,8 @@ def test_loop_breaker_asks_on_third_unchanged_attempt(engine):
     assert "failed 2 times in a row" in out["hookSpecificOutput"]["additionalContext"]
     third = engine.pre(pre("pytest -q", "t3"))
     assert third["hookSpecificOutput"]["permissionDecision"] == "ask"
-    run_edit(engine, "src/app.py", "e1")  # a change resets it
-    assert engine.pre(pre("pytest -q", "t4")) is None
+    run_edit(engine, "src/app.py", "e1")  # a repair does not clear the open failure
+    assert engine.pre(pre("pytest -q", "t4"))["hookSpecificOutput"]["permissionDecision"] == "ask"
 
 
 def test_regression_is_a_lesson_not_a_scar(engine):

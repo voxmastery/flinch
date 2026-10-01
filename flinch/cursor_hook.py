@@ -94,8 +94,9 @@ def to_cursor(event: str, reply: dict | None) -> dict | None:
 
 def _post(route: str, body: dict, timeout: float) -> dict | None:
     """Reply dict ({} for an empty reply), or None when the daemon is unreachable."""
-    req = urllib.request.Request(BASE + route, data=json.dumps(body).encode(),
-                                 headers={"Content-Type": "application/json"})
+    from flinch.auth import bearer_headers
+
+    req = urllib.request.Request(BASE + route, data=json.dumps(body).encode(), headers=bearer_headers())
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             raw = r.read()
@@ -114,20 +115,11 @@ def _wake_daemon(wait_s: float = 0.0) -> bool:
 
 
 def _local_scarcheck(body: dict) -> dict | None:
-    from flinch.locate import project_root, state_dir
-    from flinch.messages import scar_reason
-    from flinch.normalize import fingerprint, normalize
+    from flinch.scarcheck import reason_for
 
-    root = project_root(body["cwd"])
-    try:
-        with open(state_dir(root) / "scars.json") as f:
-            scars = json.load(f)
-    except (OSError, ValueError):
+    reason = reason_for(body.get("cwd") or "", body.get("tool_name") or "", body.get("tool_input") or {})
+    if not reason:
         return None
-    scar = scars.get(fingerprint(normalize(body["tool_name"], body["tool_input"], str(root)))) if scars else None
-    if not scar:
-        return None
-    reason = scar_reason(scar["normalized"], scar["reason"], scar["pain_id"], scar["created_at"])
     return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
                                    "permissionDecisionReason": reason}}
 

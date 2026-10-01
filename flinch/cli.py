@@ -51,7 +51,7 @@ def _start_daemon() -> bool:
                          start_new_session=True)
     for _ in range(60):  # model load takes a few seconds on a cold start
         try:
-            if httpx.get(BASE_URL + "/health", timeout=0.5).status_code == 200:
+            if httpx.get(BASE_URL + "/health", headers=_headers(), timeout=0.5).status_code == 200:
                 return True
         except httpx.HTTPError:
             pass
@@ -60,14 +60,20 @@ def _start_daemon() -> bool:
     return False
 
 
+def _headers() -> dict[str, str]:
+    from flinch.auth import bearer_headers
+
+    return bearer_headers()
+
+
 def _api(method: str, path: str, body: dict[str, Any] | None = None) -> Any:
     try:
-        r = httpx.request(method, BASE_URL + path, json=body, timeout=10)
+        r = httpx.request(method, BASE_URL + path, json=body, headers=_headers(), timeout=10)
     except httpx.HTTPError:
         if not _start_daemon():
             typer.echo(DOWN_MSG, err=True)
             raise typer.Exit(1)
-        r = httpx.request(method, BASE_URL + path, json=body, timeout=10)
+        r = httpx.request(method, BASE_URL + path, json=body, headers=_headers(), timeout=10)
     if r.status_code >= 400:
         detail = r.json().get("detail", r.text) if r.headers.get("content-type", "").startswith(
             "application/json") else r.text
@@ -155,10 +161,13 @@ def scars(project: Path = typer.Option(Path("."), help="Any path inside the proj
     from flinch.locate import project_root, state_dir
 
     raw = read_json(state_dir(project_root(str(project.resolve()))) / "scars.json", {})
-    if not raw:
+    if isinstance(raw, dict) and isinstance(raw.get("scars"), dict):
+        raw = raw["scars"]
+    rows = [(fp, s) for fp, s in raw.items() if isinstance(s, dict) and "created_at" in s] if isinstance(raw, dict) else []
+    if not rows:
         typer.echo("no scars")
         return
-    for fp, s in sorted(raw.items(), key=lambda kv: kv[1]["created_at"], reverse=True):
+    for fp, s in sorted(rows, key=lambda kv: kv[1]["created_at"], reverse=True):
         typer.echo(f"{s['pain_id']}  {fp[:10]}  sev={s['severity']}  {s['created_at']}  "
                    f"`{s['normalized']}`  {s['reason']}")
 
@@ -193,7 +202,7 @@ def reset(
 def _post_hook(route: str, body: dict[str, Any]) -> dict[str, Any] | None:
     """POST a hook body to the daemon: its reply ({} when empty), or None if unreachable."""
     try:
-        r = httpx.post(BASE_URL + route, json=body, timeout=10)
+        r = httpx.post(BASE_URL + route, json=body, headers=_headers(), timeout=10)
     except httpx.HTTPError:
         return None
     return r.json() if r.content.strip() else {}

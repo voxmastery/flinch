@@ -43,6 +43,7 @@ class UserPromptSubmitInput(HookInput):
 
 class SessionStartInput(HookInput):
     source: str = "startup"
+    prompt: str = ""
 
 
 def decision(kind: str, reason: str) -> dict[str, Any]:

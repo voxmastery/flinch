@@ -9,7 +9,8 @@ def test_add_get_persist(tmp_path):
     scar = s.add("rm -rf data/", "deleted customer db", 1.0)
     assert s.get(scar.fingerprint) == scar
     raw = json.loads(p.read_text())
-    assert set(raw[scar.fingerprint]) == {"normalized", "reason", "severity", "created_at", "pain_id"}
+    assert raw["schema_version"] == 1
+    assert set(raw["scars"][scar.fingerprint]) == {"normalized", "reason", "severity", "created_at", "pain_id"}
     assert ScarStore(p).get(scar.fingerprint) == scar  # survives restart
 
 
