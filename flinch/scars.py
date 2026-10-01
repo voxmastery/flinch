@@ -48,7 +48,7 @@ class ScarStore:
     def all(self) -> list[Scar]:
         return sorted(self._scars.values(), key=lambda s: s.created_at, reverse=True)
 
-    def add(self, normalized: str, reason: str, severity: float) -> Scar:
+    def add(self, normalized: str, reason: str, severity: float, pain_id: str | None = None) -> Scar:
         fp = fingerprint(normalized)
         with self._lock:
             prior = self._scars.get(fp)
@@ -58,7 +58,7 @@ class ScarStore:
                 reason=reason,
                 severity=max(severity, prior.severity) if prior else severity,
                 created_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                pain_id=prior.pain_id if prior else f"p_{uuid.uuid4().hex[:8]}",
+                pain_id=prior.pain_id if prior else (pain_id or f"p_{uuid.uuid4().hex[:8]}"),
             )
             self._scars = {**self._scars, fp: scar}
             self._save()

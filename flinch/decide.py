@@ -25,22 +25,27 @@ from flinch.hooks import (
     decision,
 )
 from flinch.errors import ErrorMemory, core_command, has_error_line, masks_exit
+from flinch.episode import PainEpisode, parse_episode
 from flinch.innate import Innate, strong_rule
 from flinch.memory import Memory
 from flinch.messages import (
+    cost_line,
     danger_ask_reason,
     known_fix_context,
-    repeat_failure_context,
-    stuck_ask_reason,
+    pain_hint,
+    pain_lesson_line,
     pain_recorded_context,
     reflex_ask_reason,
     reflex_deny_reason,
     relevant_lessons_context,
+    repeat_failure_context,
     scar_reason,
     session_lessons_context,
+    stuck_ask_reason,
 )
 from flinch.normalize import fingerprint, normalize
-from flinch.pain import PainDetector, PainFinding, is_test_command, pick_culprit
+from flinch.pain import PainDetector, PainFinding, is_test_command, is_unsafe_recovery, pick_culprit
+from flinch.redact import redact
 from flinch.readonly import is_mutating
 from flinch.recent import RecentActions
 from flinch.scars import SEVERITIES, Scar, ScarStore
@@ -54,6 +59,8 @@ LESSON_CUE = "destructive actions in this project"
 # Recall activation is unbounded; unrelated pain memories sit near 0.26 and on-topic ones
 # above 1.0 (measured with the pinned memory store version). Only on-topic memories are injected per prompt.
 RELEVANT_ACTIVATION = 1.0
+PAIN_RECALL_CAP = 3  # session start and prompt: hard cap, relevance then severity then recency
+PRE_HINT_CAP = 1  # one cause before a tool call, or the hint costs more than it saves
 PROVENANCE = {"manual": "user_explicit", "user_report": "user_explicit"}
 
 
@@ -120,6 +127,7 @@ class Engine:
         self._pending: dict[str, np.ndarray] = {}  # tool_use_id -> active code of allowed actions
         self._scar_codes: dict[str, np.ndarray] = {}
         self._healed: set[str] = set()
+        self._task = ""
         self._lock = threading.Lock()
         self.circuit.encode("warm up")  # first ONNX call is ~10x slower; pay it at startup
 
@@ -160,10 +168,6 @@ class Engine:
 
     def close(self) -> None:
         self.memory.close()
-
-    def _pain_recalls(self, cue: str, limit: int) -> list:
-        live = {s.pain_id for s in self.scars.all()}
-        return [r for r in self.memory.recall(cue, limit + len(live)) if r.pain_id in live][:limit]
 
     def weights(self) -> list[float]:
         return [round(float(x), 4) for x in self.circuit.weights()]
@@ -218,7 +222,11 @@ class Engine:
                     self._pending.pop(next(iter(self._pending)))
         self._record(inp, n, active, avoid, verdict, ms)
         if verdict.decision in ("deny", "ask"):
-            return decision(verdict.decision, verdict.reason or "")
+            return decision(verdict.decision, self._with_cost(verdict.reason or "", verdict.cite, n.text))
+        if is_mutating(inp.tool_name, inp.tool_input):
+            hint = self._pre_hint(n.text)
+            if hint:
+                return context("PreToolUse", hint)
         return None
 
     def _record(self, inp: ToolInput, n: Normalized, active: np.ndarray, avoid: float,
@@ -289,8 +297,9 @@ class Engine:
         steps = [core_command(a.normalized) for a in self.recent.for_session_any()
                  if a.ts > failed_at and not a.failed and a.normalized != n.text]
         # keep only the state-changing parts of each earlier action, never the failing command itself
-        changes = [part for c, pre_steps in steps for part in (*pre_steps, c)
-                   if part != core and is_mutating("Bash", {"command": part})] + list(prefix)
+        raw = [part for c, pre_steps in steps for part in (*pre_steps, c)
+               if part != core and is_mutating("Bash", {"command": part})] + list(prefix)
+        changes = [part for part in raw if not is_unsafe_recovery(part)]
         lesson = self.errors.record_success(core, changes, self.errors.change_count)
         if lesson:
             self.log.write({"event": "lesson", "session": inp.session_id, "action": n.text,
@@ -321,34 +330,125 @@ class Engine:
         return context(event, " ".join(parts)) if parts else None
 
     def prompt(self, inp: UserPromptSubmitInput) -> dict[str, Any] | None:
+        self._task = redact(inp.prompt)[:400]
         finding = self.detector.from_prompt(inp.session_id, inp.prompt)
         if finding:
             scar = self._apply(finding, inp.session_id)
             return context("UserPromptSubmit", pain_recorded_context(scar))
         if not self.scars.all():
             return None
-        relevant = [r for r in self._pain_recalls(inp.prompt, 3) if r.activation >= RELEVANT_ACTIVATION]
-        return context("UserPromptSubmit", relevant_lessons_context(self._scars_for(relevant))) if relevant else None
+        ranked = self._ranked(inp.prompt, PAIN_RECALL_CAP, floor=RELEVANT_ACTIVATION)
+        if not ranked:
+            return None
+        return context("UserPromptSubmit", relevant_lessons_context([], self._pain_lines(ranked)))
 
     def session_start(self, inp: SessionStartInput) -> dict[str, Any] | None:
-        scars = self._scars_for(self._pain_recalls(LESSON_CUE, LESSON_LIMIT))
-        if not scars:  # recall found nothing: fall back to the most severe, most recent scars
-            scars = sorted(self.scars.all(), key=lambda s: (s.severity, s.created_at), reverse=True)[:LESSON_LIMIT]
+        ranked = self._ranked(LESSON_CUE, PAIN_RECALL_CAP)
+        if not ranked:  # recall found nothing: fall back to the most severe, most recent scars
+            ranked = self._fallback_ranked(PAIN_RECALL_CAP)
         fixes = self.errors.lessons()[:LESSON_LIMIT]
-        if not scars and not fixes:
+        if not ranked and not fixes:
             return None
+        scars = [row[4] for row in ranked]
         self.log.write({"event": "lessons", "session": inp.session_id, "pain_ids": [s.pain_id for s in scars],
                         "error_lessons": len(fixes)})
-        return context("SessionStart", session_lessons_context(scars, fixes))
+        lines = self._pain_lines(ranked)
+        return context("SessionStart", session_lessons_context(scars, fixes, lines))
 
-    def _scars_for(self, recalls: list) -> list[Scar]:
-        by_id = {s.pain_id: s for s in self.scars.all()}
-        seen, out = set(), []
-        for r in recalls:
-            if r.pain_id in by_id and r.pain_id not in seen:
-                seen.add(r.pain_id)
-                out.append(by_id[r.pain_id])
-        return out
+    def _ranked(self, cue: str, cap: int, floor: float | None = None):
+        """Live episodes for this cue: activation, then severity, then recency. Hard cap."""
+        live = {s.pain_id: s for s in self.scars.all()}
+        best: dict[str, tuple] = {}
+        for hit in self.memory.recall(cue, max(cap * 4, cap + len(live))):
+            scar = live.get(hit.pain_id)
+            if scar is None or (floor is not None and hit.activation < floor):
+                continue
+            episode = self.memory.cached(hit.pain_id) or parse_episode(hit.content)
+            if episode is not None:
+                self.memory.cache(episode)
+            severity = episode.severity if episode else scar.severity
+            created = episode.created_at if episode else scar.created_at
+            prev = best.get(hit.pain_id)
+            rank = (hit.activation, severity, created)
+            if prev is None or rank > prev[:3]:
+                best[hit.pain_id] = (*rank, episode, scar)
+        return sorted(best.values(), key=lambda row: row[:3], reverse=True)[:cap]
+
+    def _fallback_ranked(self, cap: int) -> list[tuple]:
+        scars = sorted(self.scars.all(), key=lambda s: (s.severity, s.created_at), reverse=True)[:cap]
+        rows = []
+        for scar in scars:
+            episode = self.memory.cached(scar.pain_id)
+            severity = episode.severity if episode else scar.severity
+            created = episode.created_at if episode else scar.created_at
+            rows.append((0.0, severity, created, episode, scar))
+        return rows
+
+    def _pain_lines(self, ranked: list[tuple]) -> list[str]:
+        lines = []
+        for _activation, _severity, _created, episode, scar in ranked:
+            if episode is not None:
+                fix = episode.accepted_fix[0] if episode.accepted_fix else None
+                lines.append(pain_lesson_line(episode.action, episode.reason, episode.created_at or scar.created_at,
+                                               episode.cost, fix))
+            else:
+                lines.append(pain_lesson_line(scar.normalized, scar.reason, scar.created_at))
+        return lines
+
+    def _episode_for(self, pain_id: str | None, cue: str) -> PainEpisode | None:
+        if not pain_id:
+            return None
+        episode = self.memory.cached(pain_id)
+        if episode is not None:
+            return episode
+        for _activation, _severity, _created, episode, scar in self._ranked(cue, PAIN_RECALL_CAP):
+            if scar.pain_id == pain_id and episode is not None:
+                return episode
+        return None
+
+    def _with_cost(self, reason: str, pain_id: str | None, cue: str) -> str:
+        episode = self._episode_for(pain_id, cue)
+        if episode is None:
+            return reason
+        fix = episode.accepted_fix[0] if episode.accepted_fix else None
+        return f"{reason}\n{cost_line(episode.cost, fix)}"
+
+    def _pre_hint(self, cue: str) -> str | None:
+        ranked = self._ranked(cue, PRE_HINT_CAP, floor=RELEVANT_ACTIVATION)
+        if not ranked:
+            return None
+        _activation, _severity, _created, episode, scar = ranked[0]
+        if episode is None:
+            return None
+        fix = episode.accepted_fix[0] if episode.accepted_fix else None
+        return pain_hint(episode.action, episode.reason, episode.cost, fix)
+
+    def _episode(self, pain_id: str, normalized: str, reason: str, severity: float, source: str,
+                 session_id: str | None) -> PainEpisode:
+        fp = fingerprint(normalized)
+        recent = self.recent.for_session_any()
+        same = [a for a in recent if a.fingerprint == fp]
+        trace = [a.normalized for a in recent[-5:]]
+        if normalized not in trace:
+            trace = [*trace, normalized][-5:]
+        error, accepted = "", []
+        if not normalized.startswith(("Write:", "Edit:", "Delete:")):
+            core = core_command(normalized)[0]
+            opened = self.errors.open_failure(core)
+            if opened:
+                error = str(opened.get("signature") or "")
+            for lesson in self.errors.lessons():
+                if lesson.command == core:
+                    if not error:
+                        error = lesson.signature
+                    accepted = [step for step in lesson.fixed_by if not is_unsafe_recovery(step)]
+                    break
+        return PainEpisode.build(
+            pain_id=pain_id, project=self.root, session=session_id or "", task=self._task,
+            action=normalized, reason=redact(reason)[:200], error=error, severity=severity,
+            attempts=max(1, len(same)), trace=trace, accepted_fix=accepted, source=source,
+            failed=any(a.failed for a in same),
+        )
 
     def _apply(self, finding: PainFinding | None, session_id: str) -> Scar | None:
         if finding is None:
@@ -374,8 +474,12 @@ class Engine:
 
     def learn_pain(self, normalized: str, reason: str, severity: float, source: str,
                    attribution: str, session_id: str | None = None) -> Scar:
-        scar = self.scars.add(normalized, reason, severity)
-        self.memory.remember_pain(normalized, reason, severity, scar.pain_id, PROVENANCE.get(source, "user_explicit"))
+        prior = self.scars.get(fingerprint(normalized))
+        pain_id = prior.pain_id if prior else f"p_{uuid.uuid4().hex[:8]}"
+        episode = self._episode(pain_id, normalized, reason, severity, source, session_id)
+        # Write the episode first. A failed write raises and leaves no scar behind.
+        self.memory.remember_episode(episode, PROVENANCE.get(source, "user_explicit"))
+        scar = self.scars.add(normalized, reason, severity, pain_id=pain_id)
         active = self._scar_code(scar)
         self.circuit.punish(active, severity)
         self.circuit.save()

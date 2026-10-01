@@ -13,6 +13,14 @@ def test_add_get_persist(tmp_path):
     assert ScarStore(p).get(scar.fingerprint) == scar  # survives restart
 
 
+def test_re_scarring_keeps_the_original_pain_id(tmp_path):
+    s = ScarStore(tmp_path / "scars.json")
+    first = s.add("rm -rf data/", "first", 0.5, pain_id="p_keep")
+    again = s.add("rm -rf data/", "worse", 1.0, pain_id="p_other")
+    assert again.pain_id == first.pain_id == "p_keep"
+    assert again.severity == 1.0 and len(s.all()) == 1
+
+
 def test_re_scarring_keeps_one_entry_and_max_severity(tmp_path):
     s = ScarStore(tmp_path / "scars.json")
     a = s.add("rm -rf data/", "r1", 0.5)
