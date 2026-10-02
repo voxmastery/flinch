@@ -1,5 +1,7 @@
 # Flinch
 
+[![skills.sh](https://skills.sh/b/voxmastery/flinch)](https://skills.sh/voxmastery/flinch)
+
 Pain receptors for AI agents. When an action causes damage or an error, it hurts, and Flinch makes sure your agent learns from it and never repeats it:
 
 - **errors teach it too**: when a failing command later passes, Flinch keeps what fixed it, and the next time that error shows up (in any session or tool) the agent is told the fix right away; the same failing command run again with nothing changed asks first on the third try; a test/build/lint/typecheck that breaks after an edit names the edit,
@@ -13,6 +15,14 @@ It plugs into [Claude Code](https://code.claude.com) (terminal, VS Code, JetBrai
 ## Install
 
 **Site and demo video:** https://flinch-site-khaki.vercel.app. **PyPI:** https://pypi.org/project/flinch-agent/
+
+### Agent skill (skills.sh)
+
+```bash
+npx skills add voxmastery/flinch
+```
+
+Installs the `flinch` skill (how to set up and use Flinch). The Claude Code plugin and the `flinch` command are separate, below.
 
 ### Claude Code plugin (terminal, VS Code, JetBrains)
 
